@@ -1,0 +1,11 @@
+---
+description: GitHub remote and push conventions for this project
+alwaysApply: true
+---
+
+# GitHub
+
+- Remote `origin` is already set: `https://github.com/mathjung-aI/nail-ai-helper.git`
+- Account `mathjung-aI` is authenticated via GitHub CLI (keyring). Do **not** run `gh auth login` again unless auth has clearly expired.
+- On "커밋 & 푸시" / commit+push requests: commit, then `git push -u origin HEAD` (or `git push`).
+- Never commit `.env.local` or real API keys.
