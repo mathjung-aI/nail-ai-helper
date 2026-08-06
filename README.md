@@ -1,36 +1,47 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 네일아트 AI 학습 도우미
 
-## Getting Started
+광신방송예술고등학교 미디어메이크업과 2학년  
+「화가의 작품을 담은 메이크업쇼 네일아트」 3차시 융합수업용 웹앱.
 
-First, run the development server:
+학생이 실습 중 전공·경우의 수·수업 진행 질문을 스스로 확인하고,  
+네일 디자인 사진을 루브릭으로 피드백받으며, 조별 화가 샘플 디자인을 참고할 수 있습니다.
+
+## 실행 방법
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+브라우저에서 http://localhost:3000  
+교사용 이력 뷰: http://localhost:3000/teacher (기본 패스코드 `1234`)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+기본값은 **MOCK_MODE=true** 이라 OpenAI 키 없이도 전 기능을 시연할 수 있습니다.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### API 키 교체 방법
+1. `.env.local` 파일을 연다.
+2. `OPENAI_API_KEY=sk-proj-DUMMY-...` 줄을 실제 키로 바꾼다.
+3. `MOCK_MODE=false` 로 바꾼다.
+4. 개발 서버를 재시작한다. (`Ctrl+C` 후 `npm run dev`)
+※ Vercel 배포 시에는 Settings → Environment Variables에 동일한 이름으로 등록한다.
+※ 키는 절대 GitHub에 올리지 않는다. `.env.local`은 `.gitignore`에 포함되어 있다.
 
-## Learn More
+## 주요 기능
 
-To learn more about Next.js, take a look at the following resources:
+- 조·화가 온보딩 + 3모드 채팅 (전공 / 경우의 수 / 수업 안내)
+- 결정론적 경우의 수 계산기 (`8C5=56`, `10P3=720` 등)
+- 디자인 사진 피드백 (5루브릭 + 점검 질문 3개)
+- 조별 샘플 디자인 3안
+- 질문 이력 localStorage 저장 · JSON/CSV 내보내기 · 교사용 업로드 요약
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 테스트
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+npm test
+```
 
-## Deploy on Vercel
+## 출처
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- 교육부(2025). NCS학습모듈 「입체 네일아트」(LM1201010455_23v4). 한국직업능력연구원. — 수업 활용 목적 인용
+- 교육부(2022). 2022 개정 수학과 교육과정 — 공통수학1 「경우의 수」
+- 2026학년도 전공(네일 미용)·수학 융합 교수학습과정안 (지도교사 박기연)
