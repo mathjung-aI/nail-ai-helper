@@ -59,8 +59,7 @@ async function generateNailImage(opts: {
 
 Use the attached student nail-art samples ONLY as craft-style / technique / presentation references (tip shape, gel emboss, pearls, brush texture, white-background tip row). Create a NEW original design for the palette and motif above. Do not copy any tip from the references.`,
         size: "1024x1024",
-        // input_fidelity: gpt-image-1 계열에서 참고 이미지 디테일 유지
-        input_fidelity: "high" as "high",
+        input_fidelity: "high",
       });
 
       const b64 = edited.data?.[0]?.b64_json;
