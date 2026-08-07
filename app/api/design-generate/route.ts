@@ -8,13 +8,21 @@ import {
   chatModel,
 } from "@/lib/openai";
 import { buildImagePrompt } from "@/lib/prompts";
+import {
+  resolveStyleRefPaths,
+  styleRefPublicUrls,
+} from "@/lib/style-refs";
 import type { DesignSpecCard } from "@/lib/types";
+import fs from "fs";
+import { toFile } from "openai";
 import { NextResponse } from "next/server";
+import path from "path";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
 
 async function generateNailImage(opts: {
+  group: number;
   baseColor: string;
   motif: string;
   technique: string;
@@ -31,6 +39,40 @@ async function generateNailImage(opts: {
     artistMood: opts.artistMood,
   });
 
+  const refPaths = resolveStyleRefPaths(opts.group);
+
+  // 학생 샘플 스타일 참고 이미지와 함께 생성 (images.edit)
+  if (refPaths.length > 0) {
+    try {
+      const files = await Promise.all(
+        refPaths.map((p) =>
+          toFile(fs.createReadStream(p), path.basename(p), {
+            type: "image/png",
+          })
+        )
+      );
+
+      const edited = await openai.images.edit({
+        model: imageModel(),
+        image: files,
+        prompt: `${prompt}
+
+Use the attached student nail-art samples ONLY as craft-style / technique / presentation references (tip shape, gel emboss, pearls, brush texture, white-background tip row). Create a NEW original design for the palette and motif above. Do not copy any tip from the references.`,
+        size: "1024x1024",
+        // input_fidelity: gpt-image-1 계열에서 참고 이미지 디테일 유지
+        input_fidelity: "high" as "high",
+      });
+
+      const b64 = edited.data?.[0]?.b64_json;
+      const url = edited.data?.[0]?.url;
+      if (b64) return `data:image/png;base64,${b64}`;
+      if (url) return url;
+    } catch (err) {
+      console.error("style-ref image edit failed, falling back to generate", err);
+    }
+  }
+
+  // 폴백: 텍스트 프롬프트만으로 생성
   const img = await openai.images.generate({
     model: imageModel(),
     prompt,
@@ -43,6 +85,17 @@ async function generateNailImage(opts: {
   if (b64) return `data:image/png;base64,${b64}`;
   if (url) return url;
   return null;
+}
+
+function attachFallbackImages(
+  samples: DesignSpecCard[],
+  group: number
+): DesignSpecCard[] {
+  const urls = styleRefPublicUrls(group);
+  return samples.map((s, i) => ({
+    ...s,
+    imageUrl: s.imageUrl || urls[i % urls.length],
+  }));
 }
 
 export async function POST(req: Request) {
@@ -62,9 +115,8 @@ export async function POST(req: Request) {
     const withImage = Boolean(body.withImage);
     const samplesOnly = Boolean(body.samplesOnly);
 
-    // 조별 샘플 3안 + (키 사용 시) AI 이미지 생성
     if (samplesOnly) {
-      const samples: DesignSpecCard[] = getSamplesForGroup(group);
+      let samples: DesignSpecCard[] = getSamplesForGroup(group);
       const useAi = withImage && !isMockMode() && !!getOpenAI();
 
       if (useAi) {
@@ -72,6 +124,7 @@ export async function POST(req: Request) {
           const s = samples[i];
           try {
             const imageUrl = await generateNailImage({
+              group,
               baseColor: s.base,
               motif: s.motif,
               technique: s.technique,
@@ -80,10 +133,12 @@ export async function POST(req: Request) {
             if (imageUrl) samples[i] = { ...s, imageUrl };
           } catch (err) {
             console.error(`sample image ${s.id} failed`, err);
-            // 실패 시 SVG 폴백 유지
           }
         }
       }
+
+      // AI 실패·MOCK 시 학생 참고 스타일 이미지로 폴백
+      samples = attachFallbackImages(samples, group);
 
       return NextResponse.json({
         ok: true,
@@ -109,7 +164,7 @@ export async function POST(req: Request) {
             {
               role: "system",
               content:
-                "네일 10팁 컬렉션 디자인 명세를 JSON으로만 작성. 키: concept, tipPlan, tipElements, materials, makeSteps, countingBasis, cautions. 한국어. 정답 단정 금지. 저작권: 작품 재현 금지.",
+                "네일 10팁 컬렉션 디자인 명세를 JSON으로만 작성. 키: concept, tipPlan, tipElements, materials, makeSteps, countingBasis, cautions. 한국어. 정답 단정 금지. 저작권: 작품 재현 금지. 학생 실습 스타일(쪼물젤·진주파츠·세필·핸드페인팅)을 전제로 작성.",
             },
             {
               role: "user",
@@ -129,14 +184,12 @@ export async function POST(req: Request) {
     const images: string[] = [];
     if (withImage) {
       if (isMockMode() || !getOpenAI()) {
-        for (let i = 0; i < count; i++) {
-          const letter = String.fromCharCode(97 + i);
-          images.push(`/samples/${group}-${letter}.svg`);
-        }
+        images.push(...styleRefPublicUrls(group).slice(0, count));
       } else {
         for (let i = 0; i < count; i++) {
           try {
             const imageUrl = await generateNailImage({
+              group,
               baseColor,
               motif,
               technique,
@@ -146,6 +199,9 @@ export async function POST(req: Request) {
           } catch (err) {
             console.error("image generate failed", err);
           }
+        }
+        if (images.length === 0) {
+          images.push(...styleRefPublicUrls(group).slice(0, count));
         }
       }
     }

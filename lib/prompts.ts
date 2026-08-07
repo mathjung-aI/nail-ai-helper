@@ -1,4 +1,5 @@
 import { getGroup } from "@/lib/knowledge/artists";
+import { STUDENT_NAIL_CRAFT_STYLE } from "@/lib/style-refs";
 import type { ChatMode, Profile } from "@/lib/types";
 
 export function commonHeader(profile: Profile): string {
@@ -117,11 +118,18 @@ export function designFeedbackPrompt(artist: string): string {
 - 사진이 흐리거나 네일이 아닌 경우 overall에 그 사실을 적고 나머지는 빈 배열로 두세요.`;
 }
 
-export const IMAGE_PROMPT_TEMPLATE = `Close-up product photograph of a set of {n} artificial nail tips arranged in a row on a clean white surface.
-Each tip features hand-sculpted 2D embossed gel nail art. Base color: {baseColor}.
-Motif: {motif}, rendered in a raised, glossy, semi-three-dimensional gel texture.
-Art technique: {technique}. Overall mood inspired by {artistMood} — do NOT reproduce any existing artwork.
-Soft studio lighting, shallow depth of field, high detail, no hands, no text, no watermark.`;
+export const IMAGE_PROMPT_TEMPLATE = `{craftStyle}
+
+Create ONE new nail-tip set inspired by this classroom craft language.
+Layout: {n} artificial nail tips in a horizontal row on clean white.
+
+For THIS set specifically:
+- Base color: {baseColor}
+- Motif (reinterpreted in gel craft, not a famous painting): {motif}
+- Gel technique: {technique}
+- Mood adjectives only (colors, lines, texture — never artwork titles): {artistMood}
+
+Keep thickness wearable for gel class (raised but not bulky). Each tip can vary slightly but feel like one collection.`;
 
 export function buildImagePrompt(opts: {
   n?: number;
@@ -129,8 +137,13 @@ export function buildImagePrompt(opts: {
   motif: string;
   technique: string;
   artistMood: string;
+  craftStyle?: string;
 }): string {
-  return IMAGE_PROMPT_TEMPLATE.replace("{n}", String(opts.n ?? 5))
+  return IMAGE_PROMPT_TEMPLATE.replace(
+    "{craftStyle}",
+    opts.craftStyle || STUDENT_NAIL_CRAFT_STYLE
+  )
+    .replace("{n}", String(opts.n ?? 5))
     .replace("{baseColor}", opts.baseColor)
     .replace("{motif}", opts.motif)
     .replace("{technique}", opts.technique)

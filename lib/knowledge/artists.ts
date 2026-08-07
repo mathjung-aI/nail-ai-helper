@@ -17,7 +17,7 @@ export const GROUPS: GroupInfo[] = [
     group: 1,
     artist: "빈센트 반 고흐",
     accentHex: "#1E4B8F",
-    mood: "swirling brushstroke texture, deep cobalt blue and golden yellow contrast, thick impasto ridges",
+    mood: "thick short gel brush dabs like student hand-painted tips, cobalt and mustard contrast, raised swirling emboss ridges, classroom gel craft — not a museum painting copy",
     baseColors: [
       "딥 코발트 블루",
       "머스터드 옐로우",
@@ -35,7 +35,7 @@ export const GROUPS: GroupInfo[] = [
     group: 2,
     artist: "클로드 모네",
     accentHex: "#6FA8B8",
-    mood: "soft pastel color blending, hazy watercolor edges, pale lavender pink and misty blue-green",
+    mood: "student impressionist gel painting on almond tips: short dabbed strokes of aqua, lavender, pink, soft pond-garden color layers, handmade brush texture — reinterpret mood only, never copy a famous canvas",
     baseColors: [
       "연보라",
       "파스텔 핑크",
@@ -43,8 +43,8 @@ export const GROUPS: GroupInfo[] = [
       "세이지 그린",
       "크림 화이트",
     ],
-    techniques: ["워터 그러데이션", "블러 엠보", "펄 톱 젤", "도트 텍스처"],
-    motifs: ["수련 꽃잎", "물결 라인", "작은 잎사귀"],
+    techniques: ["핸드페인팅 붓터치", "워터 그러데이션", "블러 엠보", "펄 톱 젤"],
+    motifs: ["수련·연못 색면", "다리·산책로 실루엣", "꽃밭 스트로크"],
     countingExample: "합의 법칙 — 따뜻한 팔레트 또는 차가운 팔레트 선택",
     intro:
       "옅은 파스텔과 흐릿한 경계가 특징입니다. 수련·물결 모티브를 얇은 블러 엠보로 표현하면 무대 조명에서도 부드럽게 빛납니다.",
@@ -53,10 +53,10 @@ export const GROUPS: GroupInfo[] = [
     group: 3,
     artist: "구스타프 클림트",
     accentHex: "#C9A227",
-    mood: "ornate gold leaf texture, geometric spirals and mosaic tiles, warm amber and black contrast",
+    mood: "ornate student gel craft: gold base, emerald stipple, pearl parts, red gem accents, gold chains and filigree charms, molded-gel tree or floral relief — decorative classroom tips, never reproduce a famous framed painting",
     baseColors: ["골드", "블랙", "앰버", "버건디", "샴페인 베이지"],
-    techniques: ["골드 포일", "엠보 기하 패턴", "스톤 세팅", "라인 드로잉"],
-    motifs: ["나선 문양", "사각 모자이크", "눈물방울"],
+    techniques: ["골드 포일", "쪼물젤 조형", "진주파츠·스톤", "세필 라인"],
+    motifs: ["해바라기·꽃 엠보", "골드 소용돌이", "진주·체인 드롭"],
     countingExample: "순열 10P3 = 720가지 (시그니처 팁 배치)",
     intro:
       "골드와 블랙의 대비, 기하 나선·모자이크가 핵심입니다. 시그니처 팁 위치를 경우의 수로 정한 뒤 나머지는 절제해 통일감을 잡으세요.",
@@ -366,8 +366,23 @@ export const SAMPLE_DESIGNS: DesignSpecCard[] = [
 ];
 
 export function getSamplesForGroup(group: number): DesignSpecCard[] {
-  return SAMPLE_DESIGNS.filter((s) => s.group === group).map((s) => ({
+  const fallbacks = [
+    "/references/style-ethereal.png",
+    "/references/style-impressionist.png",
+    "/references/style-ornament.png",
+  ];
+  // 조별 우선 폴백 순서 (서버 AI 생성 전/실패 시)
+  const order =
+    group === 2
+      ? [1, 0, 2]
+      : group === 3 || group === 5
+        ? [2, 0, 1]
+        : group === 1
+          ? [1, 0, 2]
+          : [0, 2, 1];
+
+  return SAMPLE_DESIGNS.filter((s) => s.group === group).map((s, i) => ({
     ...s,
-    imageUrl: `/samples/${group}-${s.id.split("-")[1]}.svg`,
+    imageUrl: fallbacks[order[i % 3]],
   }));
 }

@@ -45,7 +45,7 @@ function defaultProfile(group = 1): Profile {
   };
 }
 
-const SAMPLE_CACHE_PREFIX = "nailapp.sampleCache.";
+const SAMPLE_CACHE_PREFIX = "nailapp.sampleCache.v2.";
 
 function loadSampleCache(group: number): DesignSpecCard[] | null {
   try {
@@ -263,8 +263,8 @@ export function ChatWindow({ mockBadge }: { mockBadge: boolean }) {
           id: uid(),
           role: "assistant",
           content: data.generatedWithAi
-            ? `${profile.group}조 · ${profile.artist} 분위기로 AI가 그린 샘플 3안이에요. 예시이니 조 분석 요소로 바꿔 보세요.`
-            : `${profile.group}조 · ${profile.artist} 분위기에 맞춘 샘플 3안이에요. (MOCK 모드 — 실제 AI 이미지는 .env.local에 키를 넣고 MOCK_MODE=false 로 바꿔 주세요.)`,
+            ? `${profile.group}조 · ${profile.artist} 분위기로, 학생 실습 스타일(참고 샘플)을 반영해 AI가 그린 샘플 3안이에요. 예시이니 조 분석 요소로 바꿔 보세요.`
+            : `${profile.group}조 · ${profile.artist} 분위기에 맞춘 샘플 3안이에요. (참고: 학생 디자인 스타일 이미지 / MOCK이면 참고 이미지가 먼저 보여요.)`,
           designs: samples,
           createdAt: Date.now(),
           mode,
