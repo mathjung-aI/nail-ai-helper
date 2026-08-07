@@ -49,7 +49,7 @@ function defaultProfile(group = 1): Profile {
 type PendingImprove = {
   feedbackMsgId: string;
   feedback: DesignFeedback;
-  studentImageDataUrl: string;
+  studentImage: File;
 };
 
 export function ChatWindow({ mockBadge }: { mockBadge: boolean }) {
@@ -202,7 +202,7 @@ export function ChatWindow({ mockBadge }: { mockBadge: boolean }) {
     }
   }
 
-  function onFeedback(feedback: DesignFeedback, studentImageDataUrl: string) {
+  function onFeedback(feedback: DesignFeedback, studentImage: File) {
     const feedbackMsgId = uid();
     setMessages((prev) => [
       ...prev,
@@ -210,7 +210,7 @@ export function ChatWindow({ mockBadge }: { mockBadge: boolean }) {
         id: feedbackMsgId,
         role: "assistant",
         content:
-          "업로드한 작품을 루브릭으로 살펴봤어요. 정답은 없으니 보완점을 참고해 조에서 다듬어 보세요. 원하면 부분 개선 예시 이미지도 만들 수 있어요.",
+          "업로드한 작품을 루브릭으로 살펴봤어요. 정답은 없으니 보완점을 참고해 조에서 다듬어 보세요. 원하시면 부분 개선 예시 이미지도 만들 수 있어요.",
         feedback,
         createdAt: Date.now(),
         mode: "nail",
@@ -219,7 +219,7 @@ export function ChatWindow({ mockBadge }: { mockBadge: boolean }) {
     setPendingImprove({
       feedbackMsgId,
       feedback,
-      studentImageDataUrl,
+      studentImage,
     });
   }
 
@@ -243,33 +243,42 @@ export function ChatWindow({ mockBadge }: { mockBadge: boolean }) {
 
     setBusy(true);
     setError(null);
-    setLoadLabel("학생 작품 기반 개선 예시 이미지를 만드는 중… (수십 초~1분)");
+    setLoadLabel("학생 작품 기반 개선 예시 이미지를 만드는 중… (최대 1~2분)");
 
     try {
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 120_000);
+      const timer = setTimeout(() => controller.abort(), 180_000);
+
+      const fd = new FormData();
+      fd.append("image", pending.studentImage);
+      fd.append("mode", "improve");
+      fd.append("withImage", "true");
+      fd.append("confirmed", "true");
+      fd.append("group", String(profile.group));
+      fd.append("artist", profile.artist || "");
+      fd.append("overall", pending.feedback.overall || "");
+      fd.append(
+        "improvements",
+        JSON.stringify(pending.feedback.improvements || [])
+      );
+      fd.append(
+        "strengths",
+        JSON.stringify(pending.feedback.strengths || [])
+      );
 
       const res = await fetch("/api/design-generate", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         signal: controller.signal,
-        body: JSON.stringify({
-          mode: "improve",
-          withImage: true,
-          confirmed: true,
-          group: profile.group,
-          artist: profile.artist,
-          studentImageDataUrl: pending.studentImageDataUrl,
-          overall: pending.feedback.overall,
-          improvements: pending.feedback.improvements,
-          strengths: pending.feedback.strengths,
-        }),
+        body: fd,
       });
       clearTimeout(timer);
 
       const data = await res.json().catch(() => null);
       if (!data?.ok || !data.imageUrl) {
-        throw new Error(data?.error || "fail");
+        throw new Error(
+          data?.error ||
+            "개선 예시 이미지를 만들지 못했어요. 잠시 후 다시 시도해 주세요."
+        );
       }
 
       bumpImageGenCount(1);
@@ -282,7 +291,8 @@ export function ChatWindow({ mockBadge }: { mockBadge: boolean }) {
         base: getGroup(profile.group).baseColors[0],
         technique: getGroup(profile.group).techniques[0],
         motif: getGroup(profile.group).motifs[0],
-        tipPlan: pending.feedback.improvements.slice(0, 2).join(" · ") ||
+        tipPlan:
+          pending.feedback.improvements.slice(0, 2).join(" · ") ||
           "피드백 보완점을 반영한 예시",
         countingBasis: "",
         makeSteps: pending.feedback.improvements.slice(0, 4),
@@ -302,10 +312,15 @@ export function ChatWindow({ mockBadge }: { mockBadge: boolean }) {
             : m
         )
       );
-    } catch {
-      setError(
-        "개선 예시 이미지를 만들지 못했어요. 네트워크·API 키·MOCK_MODE를 확인한 뒤 다시 올려 주세요."
-      );
+    } catch (err) {
+      const aborted =
+        err instanceof DOMException && err.name === "AbortError";
+      const msg = aborted
+        ? "이미지 생성 시간이 너무 길어요. 네트워크가 안정적일 때 다시 시도해 주세요."
+        : err instanceof Error && err.message
+          ? err.message
+          : "개선 예시 이미지를 만들지 못했어요. 잠시 후 다시 시도해 주세요.";
+      setError(msg);
     } finally {
       setBusy(false);
       setLoadLabel(null);

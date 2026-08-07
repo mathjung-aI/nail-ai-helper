@@ -8,10 +8,8 @@ import {
   chatModel,
 } from "@/lib/openai";
 import { buildImagePrompt, buildImproveImagePrompt } from "@/lib/prompts";
-import { STUDENT_NAIL_CRAFT_STYLE } from "@/lib/style-refs";
 import { toFile } from "openai";
 import { NextResponse } from "next/server";
-import { Readable } from "stream";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -46,6 +44,33 @@ function parseDataUrl(dataUrl: string): { mime: string; buffer: Buffer } | null 
   }
 }
 
+function openaiErrorMessage(err: unknown): string {
+  if (!err || typeof err !== "object") return "이미지 API 호출에 실패했어요.";
+  const e = err as {
+    message?: string;
+    status?: number;
+    error?: { message?: string; code?: string };
+  };
+  const msg = e.error?.message || e.message || "이미지 API 호출에 실패했어요.";
+  if (e.status === 401 || e.status === 403) {
+    return "OpenAI API 키 권한을 확인해 주세요. (이미지 모델 사용 가능 여부)";
+  }
+  if (e.status === 429) {
+    return "이미지 생성 요청이 많아요. 잠시 후 다시 시도해 주세요.";
+  }
+  return msg.slice(0, 240);
+}
+
+function extractImageUrl(data: { b64_json?: string | null; url?: string | null } | undefined) {
+  if (!data) return null;
+  if (data.b64_json) {
+    // jpeg 응답이면 jpeg로, 아니면 png로
+    return `data:image/jpeg;base64,${data.b64_json}`;
+  }
+  if (data.url) return data.url;
+  return null;
+}
+
 async function generateNailImage(opts: {
   group: number;
   baseColor: string;
@@ -73,11 +98,10 @@ async function generateNailImage(opts: {
       prompt,
       size: "1024x1024",
       n: 1,
+      quality: "medium",
+      output_format: "jpeg",
     });
-    const b64 = img.data?.[0]?.b64_json;
-    const url = img.data?.[0]?.url;
-    if (b64) return `data:image/png;base64,${b64}`;
-    if (url) return url;
+    return extractImageUrl(img.data?.[0]);
   } catch (err) {
     console.error("image generate failed", err);
   }
@@ -85,28 +109,35 @@ async function generateNailImage(opts: {
 }
 
 async function improveFromStudentPhoto(opts: {
-  studentImageDataUrl: string;
+  mime: string;
+  buffer: Buffer;
   artistMood: string;
   overall: string;
   improvements: string[];
   strengths: string[];
-}): Promise<string | null> {
+}): Promise<{ imageUrl: string | null; detail?: string }> {
   const openai = getOpenAI();
-  if (!openai) return null;
+  if (!openai) {
+    return {
+      imageUrl: null,
+      detail: "OPENAI_API_KEY와 MOCK_MODE=false 를 확인해 주세요.",
+    };
+  }
 
-  const parsed = parseDataUrl(opts.studentImageDataUrl);
-  if (!parsed) return null;
+  const mime = opts.mime.includes("png")
+    ? "image/png"
+    : opts.mime.includes("webp")
+      ? "image/webp"
+      : "image/jpeg";
+  const ext = mime === "image/png" ? "png" : mime === "image/webp" ? "webp" : "jpg";
 
-  const ext = parsed.mime.includes("png")
-    ? "png"
-    : parsed.mime.includes("webp")
-      ? "webp"
-      : "jpg";
-  const studentFile = await toFile(
-    Readable.from(parsed.buffer),
-    `student-work.${ext}`,
-    { type: parsed.mime }
-  );
+  // 너무 큰 입력은 타임아웃·본문 한도에 걸리기 쉬움
+  if (opts.buffer.length > 3.5 * 1024 * 1024) {
+    return {
+      imageUrl: null,
+      detail: "이미지가 너무 커요. 4MB 이하로 다시 찍어 올려 주세요.",
+    };
+  }
 
   const prompt = buildImproveImagePrompt({
     artistMood: opts.artistMood,
@@ -115,48 +146,188 @@ async function improveFromStudentPhoto(opts: {
     strengths: opts.strengths,
   });
 
+  const craft =
+    "Classroom handmade gel nail craft. Keep wearable student-made look. No hands, no text, no watermark.";
+
+  let lastDetail = "";
+
   try {
+    const studentFile = await toFile(opts.buffer, `student-work.${ext}`, {
+      type: mime,
+    });
     const edited = await openai.images.edit({
       model: imageModel(),
       image: studentFile,
-      prompt: `${STUDENT_NAIL_CRAFT_STYLE}
-
-${prompt}`,
+      prompt: `${craft}\n\n${prompt}`,
       size: "1024x1024",
-      input_fidelity: "high",
+      // low + medium: Netlify 타임아웃을 줄이기 위함
+      input_fidelity: "low",
+      quality: "medium",
+      output_format: "jpeg",
     });
-    const b64 = edited.data?.[0]?.b64_json;
-    const url = edited.data?.[0]?.url;
-    if (b64) return `data:image/png;base64,${b64}`;
-    if (url) return url;
+    const url = extractImageUrl(edited.data?.[0]);
+    if (url) return { imageUrl: url };
+    lastDetail = "편집 결과에 이미지가 없어요.";
   } catch (err) {
+    lastDetail = openaiErrorMessage(err);
     console.error("improve edit failed, falling back to generate", err);
   }
 
-  // fallback: text-only generate guided by feedback (no student pixels)
   try {
     const img = await openai.images.generate({
       model: imageModel(),
-      prompt: `${STUDENT_NAIL_CRAFT_STYLE}
+      prompt: `${craft}
 
 ${prompt}
 
-Create a classroom gel nail tip set that illustrates the suggested improvements.`,
+Create one horizontal set of gel nail tips on clean white that shows the suggested improvements.`,
       size: "1024x1024",
       n: 1,
+      quality: "medium",
+      output_format: "jpeg",
     });
-    const b64 = img.data?.[0]?.b64_json;
-    const url = img.data?.[0]?.url;
-    if (b64) return `data:image/png;base64,${b64}`;
-    if (url) return url;
+    const url = extractImageUrl(img.data?.[0]);
+    if (url) return { imageUrl: url };
+    lastDetail = lastDetail || "생성 결과에 이미지가 없어요.";
   } catch (err) {
+    lastDetail = openaiErrorMessage(err);
     console.error("improve generate fallback failed", err);
   }
-  return null;
+
+  return { imageUrl: null, detail: lastDetail };
+}
+
+async function readImprovePayload(req: Request): Promise<{
+  group: number;
+  artist?: string;
+  confirmed: boolean;
+  withImage: boolean;
+  overall: string;
+  improvements: string[];
+  strengths: string[];
+  mime: string;
+  buffer: Buffer;
+} | { error: string; status: number }> {
+  const contentType = req.headers.get("content-type") || "";
+
+  if (contentType.includes("multipart/form-data")) {
+    const form = await req.formData();
+    const file = form.get("image");
+    if (!(file instanceof File)) {
+      return { error: "학생 작품 이미지가 필요해요.", status: 400 };
+    }
+    const buf = Buffer.from(await file.arrayBuffer());
+    const improvementsRaw = String(form.get("improvements") || "[]");
+    const strengthsRaw = String(form.get("strengths") || "[]");
+    let improvements: string[] = [];
+    let strengths: string[] = [];
+    try {
+      improvements = JSON.parse(improvementsRaw);
+    } catch {
+      improvements = [];
+    }
+    try {
+      strengths = JSON.parse(strengthsRaw);
+    } catch {
+      strengths = [];
+    }
+    return {
+      group: Number(form.get("group") || 1),
+      artist: String(form.get("artist") || "") || undefined,
+      confirmed: String(form.get("confirmed")) === "true",
+      withImage: String(form.get("withImage")) === "true",
+      overall: String(form.get("overall") || ""),
+      improvements: improvements.map(String),
+      strengths: strengths.map(String),
+      mime: file.type || "image/jpeg",
+      buffer: buf,
+    };
+  }
+
+  const body = await req.json();
+  let mime = "image/jpeg";
+  let buffer: Buffer | null = null;
+
+  if (typeof body.studentImageDataUrl === "string") {
+    const parsed = parseDataUrl(body.studentImageDataUrl);
+    if (parsed) {
+      mime = parsed.mime;
+      buffer = parsed.buffer;
+    }
+  }
+
+  if (!buffer) {
+    return { error: "학생 작품 이미지가 필요해요.", status: 400 };
+  }
+
+  return {
+    group: Number(body.group || body.profile?.group || 1),
+    artist: body.artist,
+    confirmed: Boolean(body.confirmed),
+    withImage: Boolean(body.withImage),
+    overall: String(body.overall || ""),
+    improvements: Array.isArray(body.improvements)
+      ? body.improvements.map(String)
+      : [],
+    strengths: Array.isArray(body.strengths) ? body.strengths.map(String) : [],
+    mime,
+    buffer,
+  };
 }
 
 export async function POST(req: Request) {
   try {
+    const contentType = req.headers.get("content-type") || "";
+
+    // FormData면 improve 전용으로 처리
+    if (contentType.includes("multipart/form-data")) {
+      const payload = await readImprovePayload(req);
+      if ("error" in payload) {
+        return NextResponse.json(
+          { ok: false, error: payload.error },
+          { status: payload.status }
+        );
+      }
+      if (!payload.confirmed || !payload.withImage) {
+        return NextResponse.json(
+          { ok: false, error: "이미지 생성은 확인 후에만 진행해요." },
+          { status: 400 }
+        );
+      }
+      if (isMockMode() || !getOpenAI()) {
+        return NextResponse.json({
+          ok: false,
+          error:
+            "AI 이미지 생성을 쓸 수 없어요. OPENAI_API_KEY와 MOCK_MODE=false 를 확인해 주세요.",
+        });
+      }
+
+      const g = getGroup(payload.group);
+      const result = await improveFromStudentPhoto({
+        mime: payload.mime,
+        buffer: payload.buffer,
+        artistMood: g.mood,
+        overall: payload.overall,
+        improvements: payload.improvements,
+        strengths: payload.strengths,
+      });
+
+      if (!result.imageUrl) {
+        return NextResponse.json({
+          ok: false,
+          error:
+            result.detail ||
+            "개선 예시 이미지를 만들지 못했어요. 잠시 후 다시 시도해 주세요.",
+        });
+      }
+
+      return NextResponse.json({
+        ok: true,
+        imageUrl: result.imageUrl,
+        mode: "improve",
+      });
+    }
+
     const body = await req.json();
     const group = Number(body.group || body.profile?.group || 1);
     const g = getGroup(group);
@@ -175,10 +346,7 @@ export async function POST(req: Request) {
     if (mode === "improve") {
       if (!body.confirmed || !withImage) {
         return NextResponse.json(
-          {
-            ok: false,
-            error: "이미지 생성은 확인 후에만 진행해요.",
-          },
+          { ok: false, error: "이미지 생성은 확인 후에만 진행해요." },
           { status: 400 }
         );
       }
@@ -189,18 +357,21 @@ export async function POST(req: Request) {
             "AI 이미지 생성을 쓸 수 없어요. OPENAI_API_KEY와 MOCK_MODE=false 를 확인해 주세요.",
         });
       }
-      if (
-        typeof body.studentImageDataUrl !== "string" ||
-        !body.studentImageDataUrl.startsWith("data:")
-      ) {
+
+      const parsed =
+        typeof body.studentImageDataUrl === "string"
+          ? parseDataUrl(body.studentImageDataUrl)
+          : null;
+      if (!parsed) {
         return NextResponse.json(
           { ok: false, error: "학생 작품 이미지가 필요해요." },
           { status: 400 }
         );
       }
 
-      const imageUrl = await improveFromStudentPhoto({
-        studentImageDataUrl: body.studentImageDataUrl,
+      const result = await improveFromStudentPhoto({
+        mime: parsed.mime,
+        buffer: parsed.buffer,
         artistMood: g.mood,
         overall: String(body.overall || ""),
         improvements: Array.isArray(body.improvements)
@@ -211,14 +382,20 @@ export async function POST(req: Request) {
           : [],
       });
 
-      if (!imageUrl) {
+      if (!result.imageUrl) {
         return NextResponse.json({
           ok: false,
-          error: "개선 예시 이미지를 만들지 못했어요. 잠시 후 다시 시도해 주세요.",
+          error:
+            result.detail ||
+            "개선 예시 이미지를 만들지 못했어요. 잠시 후 다시 시도해 주세요.",
         });
       }
 
-      return NextResponse.json({ ok: true, imageUrl, mode: "improve" });
+      return NextResponse.json({
+        ok: true,
+        imageUrl: result.imageUrl,
+        mode: "improve",
+      });
     }
 
     const spec = mockDesignSpec({

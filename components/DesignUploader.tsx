@@ -15,7 +15,7 @@ export function DesignUploader({
   profile: Profile;
   accent: string;
   onClose: () => void;
-  onResult: (feedback: DesignFeedback, previewUrl: string) => void;
+  onResult: (feedback: DesignFeedback, imageFile: File) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [preview, setPreview] = useState<string | null>(null);
@@ -53,8 +53,7 @@ export function DesignUploader({
       const res = await fetch("/api/design-feedback", { method: "POST", body: fd });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || "fail");
-      const dataUrl = await fileToDataUrl(file);
-      onResult(data.feedback, dataUrl);
+      onResult(data.feedback, file);
       onClose();
       setPreview(null);
       setFile(null);
@@ -131,15 +130,6 @@ export function DesignUploader({
       </div>
     </div>
   );
-}
-
-function fileToDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(file);
-  });
 }
 
 async function resizeImage(file: File, max: number): Promise<File> {
