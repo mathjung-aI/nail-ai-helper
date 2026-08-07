@@ -327,7 +327,7 @@ export function ChatWindow({ mockBadge }: { mockBadge: boolean }) {
           )}
         </div>
         <div
-          className="mt-3 grid grid-cols-5 gap-1.5"
+          className="mt-3 flex flex-wrap gap-1.5"
           role="group"
           aria-label="조 선택"
         >
@@ -338,23 +338,19 @@ export function ChatWindow({ mockBadge }: { mockBadge: boolean }) {
                 key={item.group}
                 type="button"
                 onClick={() => changeGroup(item.group)}
-                className="min-h-11 rounded-xl px-1 text-sm font-bold transition"
+                className="min-h-11 flex-1 basis-[calc(50%-0.25rem)] rounded-xl px-2 text-[12px] font-bold leading-tight transition sm:basis-0 sm:text-[13px]"
                 style={
                   active
                     ? { background: item.accentHex, color: "#fff" }
                     : { background: "rgba(255,255,255,0.12)", color: "#fff" }
                 }
                 aria-pressed={active}
-                title={item.artist}
               >
-                {item.group}조
+                {item.group}조 - {item.artist}
               </button>
             );
           })}
         </div>
-        <p className="mt-2 text-center text-[13px] text-white/85">
-          {g.group}조 · {g.artist}
-        </p>
       </header>
 
       <ModeTabs mode={mode} onChange={setMode} accent={accent} />
