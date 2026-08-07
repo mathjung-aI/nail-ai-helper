@@ -1,30 +1,30 @@
 import fs from "fs";
 import path from "path";
 
-/** 학생 실습 스타일 참고 이미지 (public/references) */
+/** 학생 실습 스타일 참고 이미지 (public/references) — 결과로 그대로 보여주지 않음 */
 export const STYLE_REF_FILES = {
-  ethereal: "style-ethereal.png",
-  impressionist: "style-impressionist.png",
-  ornament: "style-ornament.png",
+  sample1: "student-sample-1.png",
+  sample2: "student-sample-2.png",
+  sample3: "student-sample-3.png",
 } as const;
 
 export type StyleRefKey = keyof typeof STYLE_REF_FILES;
 
-/** 조별 우선 참고 스타일 (첫 이미지가 fidelity가 가장 높음) */
+/** 조별 우선 참고 샘플 (첫 이미지가 기본, 생성 시 랜덤으로 하나 선택) */
 export function styleRefsForGroup(group: number): StyleRefKey[] {
   switch (group) {
-    case 1: // 고흐 — 두툼한 붓터치·인상파 질감 + 섬세한 조형
-      return ["impressionist", "ethereal", "ornament"];
-    case 2: // 모네 — 인상파 핸드페인팅
-      return ["impressionist", "ethereal", "ornament"];
-    case 3: // 클림트 — 골드·진주·파츠 장식
-      return ["ornament", "ethereal", "impressionist"];
-    case 4: // 몬드리안 — 정교한 핸드크래프트 라인
-      return ["ethereal", "ornament", "impressionist"];
-    case 5: // 쿠사마 — 파츠·반복 조형 감성
-      return ["ornament", "ethereal", "impressionist"];
+    case 1: // 고흐 — 붓터치·핸드크래프트
+      return ["sample2", "sample1", "sample3"];
+    case 2: // 모네 — 인상파 핸드페인팅 (샘플2 우선)
+      return ["sample2", "sample1", "sample3"];
+    case 3: // 클림트 — 골드·파츠 (샘플3 우선)
+      return ["sample3", "sample1", "sample2"];
+    case 4:
+      return ["sample1", "sample2", "sample3"];
+    case 5:
+      return ["sample1", "sample3", "sample2"];
     default:
-      return ["ethereal", "impressionist", "ornament"];
+      return ["sample1", "sample2", "sample3"];
   }
 }
 
@@ -35,29 +35,34 @@ export function resolveStyleRefPaths(group: number): string[] {
     .filter((p) => fs.existsSync(p));
 }
 
-/** MOCK/폴백용 public URL */
-export function styleRefPublicUrls(group: number): string[] {
-  return styleRefsForGroup(group).map(
-    (key) => `/references/${STYLE_REF_FILES[key]}`
-  );
+/** 생성마다 다른 참고 샘플 1장을 고름 (다양성) */
+export function pickStyleRefPath(group: number): string | null {
+  const paths = resolveStyleRefPaths(group);
+  if (paths.length === 0) return null;
+  return paths[Math.floor(Math.random() * paths.length)];
 }
 
 /**
  * 학생 네일아트 실습 스타일 공통 가이드.
- * 첨부 샘플: 아몬드/스틸레토 팁, 쪼물젤·진주파츠·세필 라인, 핸드크래프트 감성.
+ * 샘플예시 1·2·3: 스타일 참고만. 비어 있는(윤곽만 있는) 네일 팁은 무시.
  */
 export const STUDENT_NAIL_CRAFT_STYLE = `
 Match the CRAFT STYLE of Korean vocational high-school gel nail practice samples (student handwork), NOT glossy commercial CGI nails.
 
 Must look like:
-- A row of 5 long almond or soft-stiletto artificial nail tips on a plain white background
-- Hand-sculpted 2D embossed gel (쪼물젤 / molded gel), pearl parts (진주 파츠), fine-line illustration, gold filigree charms, or thick painterly gel brush dabs — as in classroom student work
+- A row of finished artificial nail tips on a plain white background (almond / soft-stiletto)
+- Hand-sculpted 2D embossed gel (쪼물젤), pearl parts, fine-line illustration, gold filigree/charms, or thick painterly gel brush dabs
 - Visible handmade texture: stippling, short brush strokes, raised gel ridges, small pearls/gems/chains when ornamental
 - Soft pastel OR impressionist layered color OR ornate gold+jewel craft — depending on the mood below
-- Photographed or cleanly presented tip collection (product photo or neat flat-lay), no hands, no fingers, no text, no watermark, no labels
+- No hands, no fingers, no Korean/English text labels, no arrows, no watermark
+
+When looking at reference sketches/photos:
+- IGNORE blank or empty nail outlines that have no design filled in
+- IGNORE annotation text, arrows, and handwritten labels
+- Use ONLY the crafted/painted tips as style cues (texture, technique, tip shape)
 
 Do NOT:
-- Copy or reproduce any famous painting or existing artwork (no The Kiss, no Water Lilies, no Starry Night, etc.)
-- Generate fantasy CGI chrome nails or Instagram influencer hyper-gloss unrelated to gel craft class
-- Put artist names or artwork titles in the image
+- Copy or reproduce any famous painting or existing artwork
+- Copy the reference tips tip-for-tip
+- Generate fantasy CGI chrome nails unrelated to gel craft class
 `.trim();

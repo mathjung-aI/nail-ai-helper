@@ -12,7 +12,7 @@ import {
   chatModel,
 } from "@/lib/openai";
 import { buildImagePrompt } from "@/lib/prompts";
-import { resolveStyleRefPaths } from "@/lib/style-refs";
+import { pickStyleRefPath } from "@/lib/style-refs";
 import type { DesignSpecCard } from "@/lib/types";
 import fs from "fs";
 import { toFile } from "openai";
@@ -63,26 +63,24 @@ async function generateNailImage(opts: {
     variation,
   });
 
-  // 참고 이미지는 '스타일만' 참고 — 결과로 그대로 보여주지 않음
-  const refPaths = resolveStyleRefPaths(opts.group).slice(0, 1);
+  // 참고 이미지는 '스타일만' — 샘플1·2·3 중 랜덤 1장, 빈 네일 윤곽은 무시
+  const refPath = pickStyleRefPath(opts.group);
 
-  if (refPaths.length > 0) {
+  if (refPath) {
     try {
-      const files = await Promise.all(
-        refPaths.map((p) =>
-          toFile(fs.createReadStream(p), path.basename(p), {
-            type: "image/png",
-          })
-        )
-      );
+      const file = await toFile(fs.createReadStream(refPath), path.basename(refPath), {
+        type: "image/png",
+      });
 
       const edited = await openai.images.edit({
         model: imageModel(),
-        image: files,
+        image: file,
         prompt: `${prompt}
 
-The attached image is ONLY a craft-style reference (gel texture, tip shape, handmade look).
-Invent a completely different layout and motif arrangement. Never reproduce the reference tips.`,
+The attached image is ONLY a craft-style reference.
+Ignore any blank/empty nail tip outlines that have no design.
+Ignore arrows, handwritten labels, and text annotations.
+Invent a completely different layout and motif arrangement. Never copy the reference tips.`,
         size: "1024x1024",
         input_fidelity: "low",
       });
