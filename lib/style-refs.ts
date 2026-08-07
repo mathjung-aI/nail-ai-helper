@@ -15,13 +15,13 @@ export const STYLE_REF_FILES = {
 export type StyleRefKey = keyof typeof STYLE_REF_FILES;
 
 /** 항상 1 → 2 → 3 순 (sample1이 API 입력 1번이라 fidelity가 가장 높음) */
-export function styleRefsForGroup(_group: number): StyleRefKey[] {
+export function styleRefsForGroup(): StyleRefKey[] {
   return ["sample1", "sample2", "sample3"];
 }
 
-export function resolveStyleRefPaths(group: number): string[] {
+export function resolveStyleRefPaths(): string[] {
   const dir = path.join(process.cwd(), "public", "references");
-  return styleRefsForGroup(group)
+  return styleRefsForGroup()
     .map((key) => path.join(dir, STYLE_REF_FILES[key]))
     .filter((p) => fs.existsSync(p));
 }
