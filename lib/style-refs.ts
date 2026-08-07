@@ -1,7 +1,11 @@
 import fs from "fs";
 import path from "path";
 
-/** 학생 실습 스타일 참고 이미지 (public/references) — 결과로 그대로 보여주지 않음 */
+/**
+ * 학생·수업 스타일 참고 이미지 (결과로 그대로 보여주지 않음)
+ * - sample1: 디자인 요소 필수 참고
+ * - sample2·3: 현재 학생들이 제작한 시안 (함께 참고)
+ */
 export const STYLE_REF_FILES = {
   sample1: "student-sample-1.png",
   sample2: "student-sample-2.png",
@@ -10,22 +14,9 @@ export const STYLE_REF_FILES = {
 
 export type StyleRefKey = keyof typeof STYLE_REF_FILES;
 
-/** 조별 우선 참고 샘플 (첫 이미지가 기본, 생성 시 랜덤으로 하나 선택) */
-export function styleRefsForGroup(group: number): StyleRefKey[] {
-  switch (group) {
-    case 1: // 고흐 — 붓터치·핸드크래프트
-      return ["sample2", "sample1", "sample3"];
-    case 2: // 모네 — 인상파 핸드페인팅 (샘플2 우선)
-      return ["sample2", "sample1", "sample3"];
-    case 3: // 클림트 — 골드·파츠 (샘플3 우선)
-      return ["sample3", "sample1", "sample2"];
-    case 4:
-      return ["sample1", "sample2", "sample3"];
-    case 5:
-      return ["sample1", "sample3", "sample2"];
-    default:
-      return ["sample1", "sample2", "sample3"];
-  }
+/** 항상 1 → 2 → 3 순 (sample1이 API 입력 1번이라 fidelity가 가장 높음) */
+export function styleRefsForGroup(_group: number): StyleRefKey[] {
+  return ["sample1", "sample2", "sample3"];
 }
 
 export function resolveStyleRefPaths(group: number): string[] {
@@ -35,34 +26,30 @@ export function resolveStyleRefPaths(group: number): string[] {
     .filter((p) => fs.existsSync(p));
 }
 
-/** 생성마다 다른 참고 샘플 1장을 고름 (다양성) */
-export function pickStyleRefPath(group: number): string | null {
-  const paths = resolveStyleRefPaths(group);
-  if (paths.length === 0) return null;
-  return paths[Math.floor(Math.random() * paths.length)];
-}
-
 /**
- * 학생 네일아트 실습 스타일 공통 가이드.
- * 샘플예시 1·2·3: 스타일 참고만. 비어 있는(윤곽만 있는) 네일 팁은 무시.
+ * 공통 크래프트 가이드 + 참고 우선순위
  */
 export const STUDENT_NAIL_CRAFT_STYLE = `
-Match the CRAFT STYLE of Korean vocational high-school gel nail practice samples (student handwork), NOT glossy commercial CGI nails.
+You are designing ORIGINAL gel nail art for a Korean high-school fusion class.
+References (in order of importance):
+1) Reference image #1 (필수): MUST borrow its DESIGN ELEMENTS — tip presentation, handmade gel craft language, decorative vocabulary (fine lines, pearls/parts, emboss, charms, layout rhythm). Do NOT copy tip-for-tip.
+2) Reference images #2 and #3: student design drafts currently made by classmates — also use as craft/technique references (how students actually build tips in class).
+3) Artist mood adjectives below: keep the assigned painter's inherent visual character (color climate, stroke/texture language, ornamental vs painterly feel) while translating into wearable gel nail craft.
 
-Must look like:
-- A row of finished artificial nail tips on a plain white background (almond / soft-stiletto)
-- Hand-sculpted 2D embossed gel (쪼물젤), pearl parts, fine-line illustration, gold filigree/charms, or thick painterly gel brush dabs
-- Visible handmade texture: stippling, short brush strokes, raised gel ridges, small pearls/gems/chains when ornamental
-- Soft pastel OR impressionist layered color OR ornate gold+jewel craft — depending on the mood below
-- No hands, no fingers, no Korean/English text labels, no arrows, no watermark
+Ignore blank/empty nail outlines with no design, ignore arrows and handwritten labels/text.
 
-When looking at reference sketches/photos:
-- IGNORE blank or empty nail outlines that have no design filled in
-- IGNORE annotation text, arrows, and handwritten labels
-- Use ONLY the crafted/painted tips as style cues (texture, technique, tip shape)
-
-Do NOT:
-- Copy or reproduce any famous painting or existing artwork
-- Copy the reference tips tip-for-tip
-- Generate fantasy CGI chrome nails unrelated to gel craft class
+Output must look like classroom gel craft (쪼물젤, pearl parts, fine-line or painterly dabs), not commercial CGI chrome nails.
+No hands, no fingers, no text, no watermark, no famous painting reproduction.
 `.trim();
+
+/** 이미지 edit API에 붙이는 참고 설명 */
+export function buildReferenceInstruction(artistMood: string): string {
+  return `
+REFERENCE RULES (follow strictly):
+- Image 1 = mandatory design-element reference (composition language, craft details, tip set presentation). Reinterpret — do not clone.
+- Images 2–3 = current student draft designs — also reference their handmade gel techniques and classroom aesthetic.
+- Ignore any blank empty nail outlines; ignore labels/arrows/text on the sketches.
+- Preserve the painterly character described here (artist inherent style as mood only, never artwork titles): ${artistMood}
+- Invent a NEW nail collection that feels like it belongs in this class and this artist mood, while staying distinct from the references.
+`.trim();
+}

@@ -12,7 +12,10 @@ import {
   chatModel,
 } from "@/lib/openai";
 import { buildImagePrompt } from "@/lib/prompts";
-import { pickStyleRefPath } from "@/lib/style-refs";
+import {
+  buildReferenceInstruction,
+  resolveStyleRefPaths,
+} from "@/lib/style-refs";
 import type { DesignSpecCard } from "@/lib/types";
 import fs from "fs";
 import { toFile } from "openai";
@@ -63,26 +66,28 @@ async function generateNailImage(opts: {
     variation,
   });
 
-  // 참고 이미지는 '스타일만' — 샘플1·2·3 중 랜덤 1장, 빈 네일 윤곽은 무시
-  const refPath = pickStyleRefPath(opts.group);
+  // 샘플1(필수 요소) + 샘플2·3(학생 시안) 모두 참고, 화가 화풍(mood) 유지
+  const refPaths = resolveStyleRefPaths(opts.group);
 
-  if (refPath) {
+  if (refPaths.length > 0) {
     try {
-      const file = await toFile(fs.createReadStream(refPath), path.basename(refPath), {
-        type: "image/png",
-      });
+      const files = await Promise.all(
+        refPaths.map((p) =>
+          toFile(fs.createReadStream(p), path.basename(p), {
+            type: "image/png",
+          })
+        )
+      );
 
       const edited = await openai.images.edit({
         model: imageModel(),
-        image: file,
+        image: files,
         prompt: `${prompt}
 
-The attached image is ONLY a craft-style reference.
-Ignore any blank/empty nail tip outlines that have no design.
-Ignore arrows, handwritten labels, and text annotations.
-Invent a completely different layout and motif arrangement. Never copy the reference tips.`,
+${buildReferenceInstruction(opts.artistMood)}`,
         size: "1024x1024",
-        input_fidelity: "low",
+        // sample1이 첫 입력이라 요소 반영을 더 살림
+        input_fidelity: "high",
       });
 
       const b64 = edited.data?.[0]?.b64_json;

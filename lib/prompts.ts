@@ -120,18 +120,18 @@ export function designFeedbackPrompt(artist: string): string {
 
 export const IMAGE_PROMPT_TEMPLATE = `{craftStyle}
 
-Create ONE brand-new original nail-tip set. Do NOT copy any reference photo tip-for-tip.
+Create ONE brand-new original set of gel nail tips for this class.
 Layout: {n} artificial nail tips in a horizontal row on clean white.
 
-For THIS unique set:
+THIS set's brief:
 - Base color: {baseColor}
-- Motif (reinterpreted in gel craft, never a famous painting): {motif}
+- Motif (gel craft reinterpretation, never a famous painting copy): {motif}
 - Gel technique: {technique}
-- Mood adjectives only: {artistMood}
-- Variation direction (must change the look): {variation}
+- Artist inherent style (mood/colors/texture only — keep this painterly character): {artistMood}
+- Variation (keep style, change arrangement): {variation}
 
-Make this set visually distinct from other sets: different density, accent tip placement, and motif scale.
-Keep thickness wearable for gel class. No hands, no text, no watermark, no labels.`;
+The result must feel like the assigned artist's visual world translated into student gel nail craft, while absorbing design elements from reference #1 and classroom draft cues from references #2–3.
+No tip-for-tip cloning. No hands, no text, no watermark.`;
 
 export function buildImagePrompt(opts: {
   n?: number;
