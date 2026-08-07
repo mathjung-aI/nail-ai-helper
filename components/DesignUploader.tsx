@@ -53,7 +53,8 @@ export function DesignUploader({
       const res = await fetch("/api/design-feedback", { method: "POST", body: fd });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || "fail");
-      onResult(data.feedback, preview || "");
+      const dataUrl = await fileToDataUrl(file);
+      onResult(data.feedback, dataUrl);
       onClose();
       setPreview(null);
       setFile(null);
@@ -130,6 +131,15 @@ export function DesignUploader({
       </div>
     </div>
   );
+}
+
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
 }
 
 async function resizeImage(file: File, max: number): Promise<File> {

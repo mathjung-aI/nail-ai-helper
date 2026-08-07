@@ -14,7 +14,6 @@ export function SuggestedQuestions({
   onSelectSession,
   onAsk,
   onUpload,
-  onSamples,
   extra,
 }: {
   session: 1 | 2 | 3;
@@ -22,11 +21,9 @@ export function SuggestedQuestions({
   onSelectSession: (s: 1 | 2 | 3) => void;
   onAsk: (text: string) => void;
   onUpload: () => void;
-  onSamples: () => void;
   extra?: string[];
 }) {
-  const cat =
-    mode === "math" ? MODE_TO_CAT.math : MODE_TO_CAT.nail;
+  const cat = mode === "math" ? MODE_TO_CAT.math : MODE_TO_CAT.nail;
   const chips = [
     ...SUGGESTED_QUESTIONS.filter(
       (q) =>
@@ -62,7 +59,6 @@ export function SuggestedQuestions({
             type="button"
             onClick={() => {
               if (q.action === "upload") onUpload();
-              else if (q.action === "samples") onSamples();
               else onAsk(q.text);
             }}
             className="min-h-11 shrink-0 rounded-full border border-[#DDD6CB] bg-white px-3 text-left text-[13px] text-[#333]"

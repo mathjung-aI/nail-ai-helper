@@ -107,15 +107,46 @@ export function designFeedbackPrompt(artist: string): string {
 학생의 조 배정 화가는 ${artist} 입니다.
 
 아래 5개 루브릭으로 평가하되, '정답 디자인'을 제시하지 말고 학생이 스스로 고치도록 돕는 톤으로 쓰세요.
-1) 제작 가능성  2) 입체 장식의 두께  3) 장식의 위치  4) 색 조화  5) 컬렉션 통일감
+1) 제작 가능성  2) 입체 장식의 두께  3) 장식의 위치·구도  4) 색 조화  5) 컬렉션 통일감
 
 반드시 아래 JSON 스키마만 출력하세요. 마크다운 코드펜스, 설명문 없이 JSON 객체 하나만.
 { "overall": string, "rubric": [{"name": string, "level": "좋음"|"보통"|"보완필요", "comment": string}],
   "strengths": string[], "improvements": string[], "checkQuestions": string[], "safetyNotes": string[] }
 
-- comment는 각 1~2문장, 한국어 존댓말.
+- comment는 각 1~2문장, 한국어 존댓말. 색·구도·레이아웃을 구체적으로.
+- improvements는 바로 적용할 수 있는 다음 행동 2~4개 (예: "약지 팁 끝 장식을 2mm 안쪽으로").
 - checkQuestions는 정확히 3개, 모두 물음표로 끝나는 되묻는 질문.
 - 사진이 흐리거나 네일이 아닌 경우 overall에 그 사실을 적고 나머지는 빈 배열로 두세요.`;
+}
+
+export function buildImproveImagePrompt(opts: {
+  artistMood: string;
+  overall: string;
+  improvements: string[];
+  strengths: string[];
+}): string {
+  const improvements =
+    opts.improvements.length > 0
+      ? opts.improvements.map((s, i) => `${i + 1}. ${s}`).join("\n")
+      : "Slightly refine balance, spacing, and color harmony.";
+  const strengths =
+    opts.strengths.length > 0
+      ? opts.strengths.map((s) => `- ${s}`).join("\n")
+      : "- Keep the student's original motif language";
+
+  return `PARTIAL IMPROVEMENT of the student's uploaded nail tip photo (image input).
+Keep the same tip layout, craft materials, and overall identity. Do NOT invent a brand-new collection.
+Preserve strengths:
+${strengths}
+
+Apply ONLY these partial improvements (visible but modest):
+${improvements}
+
+Teacher note: ${opts.overall || "(none)"}
+Artist mood to keep (adjectives only): ${opts.artistMood}
+
+Output: one horizontal set of gel nail tips on clean white, classroom handmade look.
+No hands, no text, no watermark, no famous painting copy.`;
 }
 
 export const IMAGE_PROMPT_TEMPLATE = `{craftStyle}

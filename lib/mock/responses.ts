@@ -148,7 +148,7 @@ export function mockChatReply(
         followUps: [
           "젤은 어떤 특성이 있어서 입체 조형이 가능한가요?",
           "이 두께로 조형해도 경화가 잘 될까요?",
-          "우리 조 화가에 맞는 샘플 디자인을 보여주세요.",
+          "제 디자인 사진을 올려 피드백 받을 수 있나요?",
         ],
         counting: null,
       };
@@ -176,7 +176,7 @@ export function mockChatReply(
         sources: sources.length ? sources : ["📋 학습지도안 1차시"],
         followUps: [
           "베이스 컬러 5, 아트 기법 4, 입체 모티브 3이면 팁 디자인은 몇 가지예요?",
-          "우리 조 화가에 맞는 샘플 디자인을 보여주세요.",
+          "제 디자인 사진을 올려 피드백 받을 수 있나요?",
           "2차시에 무엇을 하나요?",
         ],
         counting: null,
@@ -201,7 +201,7 @@ export function mockChatReply(
         followUps: [
           "제 디자인 사진을 봐주세요.",
           "이 두께로 조형해도 경화가 잘 될까요?",
-          "우리 조 화가에 맞는 샘플 디자인을 보여주세요.",
+          "제 디자인 사진을 올려 피드백 받을 수 있나요?",
         ],
         counting: null,
       };

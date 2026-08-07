@@ -212,13 +212,7 @@ export const SUGGESTED_QUESTIONS: SuggestedQuestion[] = [
   {
     session: "common",
     category: "design",
-    text: "제 디자인 사진을 봐주세요.",
+    text: "제 디자인 사진을 봐주세요. (작품 피드백)",
     action: "upload",
-  },
-  {
-    session: "common",
-    category: "design",
-    text: "우리 조 화가에 맞는 샘플 디자인을 보여주세요.",
-    action: "samples",
   },
 ];

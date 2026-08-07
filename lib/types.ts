@@ -114,5 +114,5 @@ export type SuggestedQuestion = {
   session: 1 | 2 | 3 | "common";
   category: "nail" | "math" | "lesson" | "design";
   text: string;
-  action?: "upload" | "samples";
+  action?: "upload";
 };

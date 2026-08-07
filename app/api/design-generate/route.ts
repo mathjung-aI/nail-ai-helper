@@ -1,8 +1,4 @@
-import {
-  buildVariedSamples,
-  getGroup,
-  getSamplesForGroup,
-} from "@/lib/knowledge/artists";
+import { getGroup } from "@/lib/knowledge/artists";
 import { mockDesignSpec } from "@/lib/mock/responses";
 import {
   FRIENDLY_ERROR,
@@ -11,16 +7,11 @@ import {
   isMockMode,
   chatModel,
 } from "@/lib/openai";
-import { buildImagePrompt } from "@/lib/prompts";
-import {
-  buildReferenceInstruction,
-  resolveStyleRefPaths,
-} from "@/lib/style-refs";
-import type { DesignSpecCard } from "@/lib/types";
-import fs from "fs";
+import { buildImagePrompt, buildImproveImagePrompt } from "@/lib/prompts";
+import { STUDENT_NAIL_CRAFT_STYLE } from "@/lib/style-refs";
 import { toFile } from "openai";
 import { NextResponse } from "next/server";
-import path from "path";
+import { Readable } from "stream";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -45,6 +36,16 @@ function randomVariation(extra?: string): string {
   return [extra, a, b, `unique seed ${seed}`].filter(Boolean).join("; ");
 }
 
+function parseDataUrl(dataUrl: string): { mime: string; buffer: Buffer } | null {
+  const m = /^data:([^;]+);base64,(.+)$/s.exec(dataUrl);
+  if (!m) return null;
+  try {
+    return { mime: m[1], buffer: Buffer.from(m[2], "base64") };
+  } catch {
+    return null;
+  }
+}
+
 async function generateNailImage(opts: {
   group: number;
   baseColor: string;
@@ -66,39 +67,6 @@ async function generateNailImage(opts: {
     variation,
   });
 
-  // 샘플1(필수 요소) + 샘플2·3(학생 시안) 모두 참고, 화가 화풍(mood) 유지
-  const refPaths = resolveStyleRefPaths(opts.group);
-
-  if (refPaths.length > 0) {
-    try {
-      const files = await Promise.all(
-        refPaths.map((p) =>
-          toFile(fs.createReadStream(p), path.basename(p), {
-            type: "image/png",
-          })
-        )
-      );
-
-      const edited = await openai.images.edit({
-        model: imageModel(),
-        image: files,
-        prompt: `${prompt}
-
-${buildReferenceInstruction(opts.artistMood)}`,
-        size: "1024x1024",
-        // sample1이 첫 입력이라 요소 반영을 더 살림
-        input_fidelity: "high",
-      });
-
-      const b64 = edited.data?.[0]?.b64_json;
-      const url = edited.data?.[0]?.url;
-      if (b64) return `data:image/png;base64,${b64}`;
-      if (url) return url;
-    } catch (err) {
-      console.error("style-ref edit failed, falling back to generate", err);
-    }
-  }
-
   try {
     const img = await openai.images.generate({
       model: imageModel(),
@@ -112,6 +80,77 @@ ${buildReferenceInstruction(opts.artistMood)}`,
     if (url) return url;
   } catch (err) {
     console.error("image generate failed", err);
+  }
+  return null;
+}
+
+async function improveFromStudentPhoto(opts: {
+  studentImageDataUrl: string;
+  artistMood: string;
+  overall: string;
+  improvements: string[];
+  strengths: string[];
+}): Promise<string | null> {
+  const openai = getOpenAI();
+  if (!openai) return null;
+
+  const parsed = parseDataUrl(opts.studentImageDataUrl);
+  if (!parsed) return null;
+
+  const ext = parsed.mime.includes("png")
+    ? "png"
+    : parsed.mime.includes("webp")
+      ? "webp"
+      : "jpg";
+  const studentFile = await toFile(
+    Readable.from(parsed.buffer),
+    `student-work.${ext}`,
+    { type: parsed.mime }
+  );
+
+  const prompt = buildImproveImagePrompt({
+    artistMood: opts.artistMood,
+    overall: opts.overall,
+    improvements: opts.improvements,
+    strengths: opts.strengths,
+  });
+
+  try {
+    const edited = await openai.images.edit({
+      model: imageModel(),
+      image: studentFile,
+      prompt: `${STUDENT_NAIL_CRAFT_STYLE}
+
+${prompt}`,
+      size: "1024x1024",
+      input_fidelity: "high",
+    });
+    const b64 = edited.data?.[0]?.b64_json;
+    const url = edited.data?.[0]?.url;
+    if (b64) return `data:image/png;base64,${b64}`;
+    if (url) return url;
+  } catch (err) {
+    console.error("improve edit failed, falling back to generate", err);
+  }
+
+  // fallback: text-only generate guided by feedback (no student pixels)
+  try {
+    const img = await openai.images.generate({
+      model: imageModel(),
+      prompt: `${STUDENT_NAIL_CRAFT_STYLE}
+
+${prompt}
+
+Create a classroom gel nail tip set that illustrates the suggested improvements.`,
+      size: "1024x1024",
+      n: 1,
+    });
+    const b64 = img.data?.[0]?.b64_json;
+    const url = img.data?.[0]?.url;
+    if (b64) return `data:image/png;base64,${b64}`;
+    if (url) return url;
+  } catch (err) {
+    console.error("improve generate fallback failed", err);
   }
   return null;
 }
@@ -131,63 +170,55 @@ export async function POST(req: Request) {
       | 2
       | 3;
     const withImage = Boolean(body.withImage);
-    const samplesOnly = Boolean(body.samplesOnly);
+    const mode = String(body.mode || "");
 
-    if (samplesOnly) {
-      const useAi = withImage && !isMockMode() && !!getOpenAI();
-      // 매번 다른 텍스트 명세 3안
-      let samples: DesignSpecCard[] = buildVariedSamples(group);
-
-      if (!useAi) {
+    if (mode === "improve") {
+      if (!body.confirmed || !withImage) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "이미지 생성은 확인 후에만 진행해요.",
+          },
+          { status: 400 }
+        );
+      }
+      if (isMockMode() || !getOpenAI()) {
         return NextResponse.json({
           ok: false,
           error:
             "AI 이미지 생성을 쓸 수 없어요. OPENAI_API_KEY와 MOCK_MODE=false 를 확인해 주세요.",
-          samples: getSamplesForGroup(group),
-          generatedWithAi: false,
         });
       }
-
-      // 3안을 병렬 생성 — 참고 스타일만 반영, 결과는 매번 다름
-      const results = await Promise.all(
-        samples.map(async (s, i) => {
-          const imageUrl = await generateNailImage({
-            group,
-            baseColor: s.base,
-            motif: s.motif,
-            technique: s.technique,
-            artistMood: g.mood,
-            variation: randomVariation(s.tipPlan),
-          });
-          return { i, imageUrl };
-        })
-      );
-
-      let generated = 0;
-      for (const r of results) {
-        if (r.imageUrl) {
-          samples[r.i] = { ...samples[r.i], imageUrl: r.imageUrl };
-          generated += 1;
-        }
+      if (
+        typeof body.studentImageDataUrl !== "string" ||
+        !body.studentImageDataUrl.startsWith("data:")
+      ) {
+        return NextResponse.json(
+          { ok: false, error: "학생 작품 이미지가 필요해요." },
+          { status: 400 }
+        );
       }
 
-      if (generated === 0) {
+      const imageUrl = await improveFromStudentPhoto({
+        studentImageDataUrl: body.studentImageDataUrl,
+        artistMood: g.mood,
+        overall: String(body.overall || ""),
+        improvements: Array.isArray(body.improvements)
+          ? body.improvements.map(String)
+          : [],
+        strengths: Array.isArray(body.strengths)
+          ? body.strengths.map(String)
+          : [],
+      });
+
+      if (!imageUrl) {
         return NextResponse.json({
           ok: false,
-          error:
-            "샘플 이미지를 만들지 못했어요. 잠시 후 다시 시도해 주세요.",
-          samples,
-          generatedWithAi: false,
+          error: "개선 예시 이미지를 만들지 못했어요. 잠시 후 다시 시도해 주세요.",
         });
       }
 
-      // 이미지 없는 안은 목록에서 제외하지 않고, 텍스트만이라도 유지
-      return NextResponse.json({
-        ok: true,
-        samples,
-        generatedWithAi: true,
-        generatedCount: generated,
-      });
+      return NextResponse.json({ ok: true, imageUrl, mode: "improve" });
     }
 
     const spec = mockDesignSpec({
