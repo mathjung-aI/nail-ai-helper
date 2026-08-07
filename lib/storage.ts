@@ -75,5 +75,5 @@ export function bumpImageGenCount(n: number): number {
 }
 
 export function canGenerateImages(n: number): boolean {
-  return getImageGenCount() + n <= 6;
+  return getImageGenCount() + n <= 12;
 }

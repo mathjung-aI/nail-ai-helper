@@ -366,23 +366,51 @@ export const SAMPLE_DESIGNS: DesignSpecCard[] = [
 ];
 
 export function getSamplesForGroup(group: number): DesignSpecCard[] {
-  const fallbacks = [
-    "/references/style-ethereal.png",
-    "/references/style-impressionist.png",
-    "/references/style-ornament.png",
-  ];
-  // 조별 우선 폴백 순서 (서버 AI 생성 전/실패 시)
-  const order =
-    group === 2
-      ? [1, 0, 2]
-      : group === 3 || group === 5
-        ? [2, 0, 1]
-        : group === 1
-          ? [1, 0, 2]
-          : [0, 2, 1];
-
-  return SAMPLE_DESIGNS.filter((s) => s.group === group).map((s, i) => ({
+  // 이미지 URL은 넣지 않음 — API가 매번 새로 생성
+  return SAMPLE_DESIGNS.filter((s) => s.group === group).map((s) => ({
     ...s,
-    imageUrl: fallbacks[order[i % 3]],
+    imageUrl: undefined,
   }));
+}
+
+/** 요청마다 팔레트 조합을 섞어 다른 3안 텍스트 명세 생성 */
+export function buildVariedSamples(group: number): DesignSpecCard[] {
+  const g = getGroup(group);
+  const seed = Date.now() + Math.floor(Math.random() * 1000);
+  const pick = <T,>(arr: T[], offset: number) =>
+    arr[Math.abs(seed + offset) % arr.length];
+
+  const variations = [
+    "minimal: only 2 tips carry the main motif, others stay quieter",
+    "center focus: tip 3 is the signature, neighbors echo lightly",
+    "rhythmic: small repeated motifs with size changes across all tips",
+  ];
+
+  const nameHints = ["리듬 안", "포인트 안", "변주 안"];
+
+  return [0, 1, 2].map((i) => {
+    const base = pick(g.baseColors, i * 3);
+    const technique = pick(g.techniques, i * 5 + 1);
+    const motif = pick(g.motifs, i * 7 + 2);
+    return {
+      id: `g${group}-${seed}-${i}`,
+      group,
+      name: `${g.artist.split(" ").slice(-1)[0]} ${nameHints[i]}`,
+      concept: `${base} 베이스에 ${motif}를 ${technique}로 — ${variations[i]}`,
+      base,
+      technique,
+      motif,
+      tipPlan: variations[i],
+      countingBasis: g.countingExample,
+      makeSteps: [
+        "소독",
+        `${base} 도포·경화`,
+        `${technique}로 ${motif} 조형`,
+        "부분 경화",
+        "톱 젤 마무리",
+      ],
+      cautions: ["두께 과다 금지", "프리에지 몰림 주의", "유명 작품 직접 재현 금지"],
+      imageUrl: undefined,
+    };
+  });
 }

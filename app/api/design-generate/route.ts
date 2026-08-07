@@ -1,4 +1,8 @@
-import { getGroup, getSamplesForGroup } from "@/lib/knowledge/artists";
+import {
+  buildVariedSamples,
+  getGroup,
+  getSamplesForGroup,
+} from "@/lib/knowledge/artists";
 import { mockDesignSpec } from "@/lib/mock/responses";
 import {
   FRIENDLY_ERROR,
@@ -8,10 +12,7 @@ import {
   chatModel,
 } from "@/lib/openai";
 import { buildImagePrompt } from "@/lib/prompts";
-import {
-  resolveStyleRefPaths,
-  styleRefPublicUrls,
-} from "@/lib/style-refs";
+import { resolveStyleRefPaths } from "@/lib/style-refs";
 import type { DesignSpecCard } from "@/lib/types";
 import fs from "fs";
 import { toFile } from "openai";
@@ -19,23 +20,26 @@ import { NextResponse } from "next/server";
 import path from "path";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 120;
 
-const AI_TIMEOUT_MS = 40_000;
+const VARIATION_POOL = [
+  "soft pastel wash with sparse accents",
+  "higher contrast accents on outer tips",
+  "fine-line dominant with tiny pearl dots",
+  "thicker emboss only on signature tips",
+  "cooler undertone shift",
+  "warmer undertone shift",
+  "more negative space / breathing room",
+  "denser motif clustering near cuticle",
+  "motifs drifting toward free edge lightly",
+  "matte-gloss mix within one collection",
+];
 
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
-  return new Promise((resolve) => {
-    const t = setTimeout(() => resolve(null), ms);
-    promise
-      .then((v) => {
-        clearTimeout(t);
-        resolve(v);
-      })
-      .catch(() => {
-        clearTimeout(t);
-        resolve(null);
-      });
-  });
+function randomVariation(extra?: string): string {
+  const a = VARIATION_POOL[Math.floor(Math.random() * VARIATION_POOL.length)];
+  const b = VARIATION_POOL[Math.floor(Math.random() * VARIATION_POOL.length)];
+  const seed = Math.random().toString(36).slice(2, 8);
+  return [extra, a, b, `unique seed ${seed}`].filter(Boolean).join("; ");
 }
 
 async function generateNailImage(opts: {
@@ -44,19 +48,22 @@ async function generateNailImage(opts: {
   motif: string;
   technique: string;
   artistMood: string;
+  variation?: string;
 }): Promise<string | null> {
   const openai = getOpenAI();
   if (!openai) return null;
 
+  const variation = opts.variation || randomVariation();
   const prompt = buildImagePrompt({
     n: 5,
     baseColor: opts.baseColor,
     motif: opts.motif,
     technique: opts.technique,
     artistMood: opts.artistMood,
+    variation,
   });
 
-  // 참고 이미지는 조별 1장만 사용 (속도·안정성)
+  // 참고 이미지는 '스타일만' 참고 — 결과로 그대로 보여주지 않음
   const refPaths = resolveStyleRefPaths(opts.group).slice(0, 1);
 
   if (refPaths.length > 0) {
@@ -74,7 +81,8 @@ async function generateNailImage(opts: {
         image: files,
         prompt: `${prompt}
 
-Use the attached student nail-art sample ONLY as craft-style reference (tip shape, gel emboss, pearls/brush texture, white-background tip row). Create a NEW original design. Do not copy tips from the reference.`,
+The attached image is ONLY a craft-style reference (gel texture, tip shape, handmade look).
+Invent a completely different layout and motif arrangement. Never reproduce the reference tips.`,
         size: "1024x1024",
         input_fidelity: "low",
       });
@@ -84,7 +92,7 @@ Use the attached student nail-art sample ONLY as craft-style reference (tip shap
       if (b64) return `data:image/png;base64,${b64}`;
       if (url) return url;
     } catch (err) {
-      console.error("style-ref image edit failed, falling back to generate", err);
+      console.error("style-ref edit failed, falling back to generate", err);
     }
   }
 
@@ -105,27 +113,10 @@ Use the attached student nail-art sample ONLY as craft-style reference (tip shap
   return null;
 }
 
-function attachFallbackImages(
-  samples: DesignSpecCard[],
-  group: number
-): DesignSpecCard[] {
-  const urls = styleRefPublicUrls(group);
-  return samples.map((s, i) => ({
-    ...s,
-    // AI 결과가 있어도 너무 크면 클라이언트 파싱 실패할 수 있어,
-    // data URL은 유지하되 없는 칸만 참고 이미지로 채움
-    imageUrl: s.imageUrl || urls[i % urls.length],
-  }));
-}
-
 export async function POST(req: Request) {
-  let groupForFallback = 1;
-  let samplesOnlyFallback = false;
   try {
     const body = await req.json();
     const group = Number(body.group || body.profile?.group || 1);
-    groupForFallback = group;
-    samplesOnlyFallback = Boolean(body.samplesOnly);
     const g = getGroup(group);
     const artist = body.artist || g.artist;
     const baseColor = body.baseColor || g.baseColors[0];
@@ -138,39 +129,61 @@ export async function POST(req: Request) {
       | 3;
     const withImage = Boolean(body.withImage);
     const samplesOnly = Boolean(body.samplesOnly);
-    // 명시적으로 false면 AI 생략 (빠른 샘플 카드)
-    const wantAi = withImage !== false;
 
     if (samplesOnly) {
-      let samples: DesignSpecCard[] = getSamplesForGroup(group);
-      let generatedWithAi = false;
-      const useAi = wantAi && !isMockMode() && !!getOpenAI();
+      const useAi = withImage && !isMockMode() && !!getOpenAI();
+      // 매번 다른 텍스트 명세 3안
+      let samples: DesignSpecCard[] = buildVariedSamples(group);
 
-      if (useAi && samples.length > 0) {
-        // 타임아웃 방지를 위해 첫 안 1장만 AI 생성 시도
-        const s = samples[0];
-        const imageUrl = await withTimeout(
-          generateNailImage({
+      if (!useAi) {
+        return NextResponse.json({
+          ok: false,
+          error:
+            "AI 이미지 생성을 쓸 수 없어요. OPENAI_API_KEY와 MOCK_MODE=false 를 확인해 주세요.",
+          samples: getSamplesForGroup(group),
+          generatedWithAi: false,
+        });
+      }
+
+      // 3안을 병렬 생성 — 참고 스타일만 반영, 결과는 매번 다름
+      const results = await Promise.all(
+        samples.map(async (s, i) => {
+          const imageUrl = await generateNailImage({
             group,
             baseColor: s.base,
             motif: s.motif,
             technique: s.technique,
             artistMood: g.mood,
-          }),
-          AI_TIMEOUT_MS
-        );
-        if (imageUrl) {
-          samples[0] = { ...s, imageUrl };
-          generatedWithAi = true;
+            variation: randomVariation(s.tipPlan),
+          });
+          return { i, imageUrl };
+        })
+      );
+
+      let generated = 0;
+      for (const r of results) {
+        if (r.imageUrl) {
+          samples[r.i] = { ...samples[r.i], imageUrl: r.imageUrl };
+          generated += 1;
         }
       }
 
-      samples = attachFallbackImages(samples, group);
+      if (generated === 0) {
+        return NextResponse.json({
+          ok: false,
+          error:
+            "샘플 이미지를 만들지 못했어요. 잠시 후 다시 시도해 주세요.",
+          samples,
+          generatedWithAi: false,
+        });
+      }
 
+      // 이미지 없는 안은 목록에서 제외하지 않고, 텍스트만이라도 유지
       return NextResponse.json({
         ok: true,
         samples,
-        generatedWithAi,
+        generatedWithAi: true,
+        generatedCount: generated,
       });
     }
 
@@ -195,7 +208,7 @@ export async function POST(req: Request) {
             },
             {
               role: "user",
-              content: `화가분위기(형용사): ${g.mood}\n베이스:${baseColor}\n기법:${technique}\n모티브:${motif}\n메모:${freeText}`,
+              content: `화가분위기(형용사): ${g.mood}\n베이스:${baseColor}\n기법:${technique}\n모티브:${motif}\n메모:${freeText}\n변주:${randomVariation()}`,
             },
           ],
           max_tokens: 700,
@@ -209,41 +222,26 @@ export async function POST(req: Request) {
     }
 
     const images: string[] = [];
-    if (withImage) {
-      if (isMockMode() || !getOpenAI()) {
-        images.push(...styleRefPublicUrls(group).slice(0, count));
-      } else {
-        const imageUrl = await withTimeout(
-          generateNailImage({
-            group,
-            baseColor,
-            motif,
-            technique,
-            artistMood: g.mood,
-          }),
-          AI_TIMEOUT_MS
-        );
-        if (imageUrl) images.push(imageUrl);
-        while (images.length < count) {
-          const urls = styleRefPublicUrls(group);
-          images.push(urls[images.length % urls.length]);
-        }
+    if (withImage && !isMockMode() && getOpenAI()) {
+      const jobs = Array.from({ length: count }, (_, i) =>
+        generateNailImage({
+          group,
+          baseColor,
+          motif,
+          technique,
+          artistMood: g.mood,
+          variation: randomVariation(`option ${i + 1}`),
+        })
+      );
+      const outs = await Promise.all(jobs);
+      for (const u of outs) {
+        if (u) images.push(u);
       }
     }
 
     return NextResponse.json({ ok: true, spec, images });
   } catch (e) {
     console.error(e);
-    if (samplesOnlyFallback) {
-      return NextResponse.json({
-        ok: true,
-        samples: attachFallbackImages(
-          getSamplesForGroup(groupForFallback),
-          groupForFallback
-        ),
-        generatedWithAi: false,
-      });
-    }
     return NextResponse.json(
       { ok: false, error: FRIENDLY_ERROR },
       { status: 500 }

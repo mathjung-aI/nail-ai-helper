@@ -5,7 +5,7 @@ import { DesignUploader } from "@/components/DesignUploader";
 import { MessageBubble, SourceSheet } from "@/components/MessageBubble";
 import { ModeTabs } from "@/components/ModeTabs";
 import { SuggestedQuestions } from "@/components/SuggestedQuestions";
-import { getGroup, getSamplesForGroup, GROUPS } from "@/lib/knowledge/artists";
+import { getGroup, GROUPS } from "@/lib/knowledge/artists";
 import { LESSON_CHUNKS } from "@/lib/knowledge/lesson";
 import { MATH_CHUNKS } from "@/lib/knowledge/math";
 import { NAIL_CHUNKS } from "@/lib/knowledge/nail";
@@ -43,27 +43,6 @@ function defaultProfile(group = 1): Profile {
     name: "익명",
     accentHex: g.accentHex,
   };
-}
-
-const SAMPLE_CACHE_PREFIX = "nailapp.sampleCache.v3.";
-
-function loadSampleCache(group: number): DesignSpecCard[] | null {
-  try {
-    const raw = sessionStorage.getItem(SAMPLE_CACHE_PREFIX + group);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as DesignSpecCard[];
-    return Array.isArray(parsed) && parsed.length ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
-function saveSampleCache(group: number, samples: DesignSpecCard[]) {
-  try {
-    sessionStorage.setItem(SAMPLE_CACHE_PREFIX + group, JSON.stringify(samples));
-  } catch {
-    // quota — ignore
-  }
 }
 
 export function ChatWindow({ mockBadge }: { mockBadge: boolean }) {
@@ -218,90 +197,72 @@ export function ChatWindow({ mockBadge }: { mockBadge: boolean }) {
     setError(null);
     setLoadLabel(
       mockBadge
-        ? "샘플 디자인을 불러오는 중…"
-        : "샘플 디자인을 준비하는 중… (AI 초안은 시간이 조금 걸릴 수 있어요)"
+        ? "MOCK 모드에서는 AI 샘플을 만들 수 없어요. MOCK_MODE=false 로 바꿔 주세요."
+        : "AI가 샘플 3안을 새로 그리는 중… (1~2분 걸릴 수 있어요)"
     );
 
-    const fallbackSamples = () => getSamplesForGroup(profile.group);
-
     try {
-      const cached = loadSampleCache(profile.group);
-      if (cached) {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: uid(),
-            role: "assistant",
-            content: `${profile.group}조 · ${profile.artist} 분위기에 맞춘 샘플 3안이에요. 예시이니 조 분석 요소로 바꿔 보세요.`,
-            designs: cached,
-            createdAt: Date.now(),
-            mode,
-          },
-        ]);
+      // 캐시 사용 안 함 — 요청마다 다른 디자인
+      if (mockBadge) {
+        setError(
+          "지금 MOCK 모드라 AI 이미지를 만들 수 없어요. .env.local 또는 Netlify에서 MOCK_MODE=false 와 API 키를 확인해 주세요."
+        );
         return;
       }
 
-      const wantAi = !mockBadge && canGenerateImages(1);
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 55_000);
-
-      let samples: DesignSpecCard[] = [];
-      let generatedWithAi = false;
-
-      try {
-        const res = await fetch("/api/design-generate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          signal: controller.signal,
-          body: JSON.stringify({
-            samplesOnly: true,
-            withImage: wantAi,
-            group: profile.group,
-            artist: profile.artist,
-          }),
-        });
-        clearTimeout(timer);
-        const data = await res.json().catch(() => null);
-        if (data?.ok && Array.isArray(data.samples) && data.samples.length) {
-          samples = data.samples as DesignSpecCard[];
-          generatedWithAi = Boolean(data.generatedWithAi);
-        } else {
-          samples = fallbackSamples();
-        }
-      } catch {
-        clearTimeout(timer);
-        samples = fallbackSamples();
+      if (!canGenerateImages(3)) {
+        setError(
+          "이번 세션 AI 이미지 한도에 가까워요. 브라우저 탭을 새로고침한 뒤 다시 시도해 주세요."
+        );
+        return;
       }
 
-      if (generatedWithAi) bumpImageGenCount(1);
-      saveSampleCache(profile.group, samples);
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 150_000);
+
+      const res = await fetch("/api/design-generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
+        body: JSON.stringify({
+          samplesOnly: true,
+          withImage: true,
+          group: profile.group,
+          artist: profile.artist,
+        }),
+      });
+      clearTimeout(timer);
+
+      const data = await res.json().catch(() => null);
+      if (!data?.ok || !Array.isArray(data.samples) || !data.samples.length) {
+        throw new Error(data?.error || "fail");
+      }
+
+      const samples = data.samples as DesignSpecCard[];
+      const hasAiImage = samples.some(
+        (s) => s.imageUrl && !s.imageUrl.includes("/references/")
+      );
+      if (!hasAiImage) {
+        throw new Error("no-ai-image");
+      }
+
+      bumpImageGenCount(samples.filter((s) => s.imageUrl).length);
 
       setMessages((prev) => [
         ...prev,
         {
           id: uid(),
           role: "assistant",
-          content: generatedWithAi
-            ? `${profile.group}조 · ${profile.artist} 분위기로 AI 초안 1안 + 학생 스타일 참고 샘플이에요. 예시이니 조 분석 요소로 바꿔 보세요.`
-            : `${profile.group}조 · ${profile.artist} 분위기의 샘플 3안이에요. (학생 실습 스타일 참고 이미지) 예시이니 조에서 요소를 바꿔 보세요.`,
+          content: `${profile.group}조 · ${profile.artist} 분위기로 AI가 새로 그린 샘플 ${samples.length}안이에요. 참고 스타일만 반영했고, 요청할 때마다 다르게 나옵니다. 예시이니 조 분석 요소로 바꿔 보세요.`,
           designs: samples,
           createdAt: Date.now(),
           mode,
         },
       ]);
     } catch {
-      const samples = fallbackSamples();
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: uid(),
-          role: "assistant",
-          content: `${profile.group}조 · ${profile.artist} 분위기의 샘플 3안이에요. (학생 실습 스타일 참고 이미지)`,
-          designs: samples,
-          createdAt: Date.now(),
-          mode,
-        },
-      ]);
+      setError(
+        "샘플 디자인을 만들지 못했어요. 네트워크·API 키·MOCK_MODE를 확인한 뒤 다시 시도해 주세요."
+      );
     } finally {
       setBusy(false);
       setLoadLabel(null);

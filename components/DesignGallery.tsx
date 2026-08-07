@@ -39,12 +39,18 @@ function DesignCard({ design }: { design: DesignSpecCard }) {
 
   return (
     <article className="overflow-hidden rounded-xl border border-[#E6DFD4] bg-white">
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={design.imageUrl || `/samples/${design.group}-a.svg`}
-        alt={design.name}
-        className="h-36 w-full object-cover bg-[#F5F1EA]"
-      />
+      {design.imageUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={design.imageUrl}
+          alt={design.name}
+          className="h-36 w-full object-cover bg-[#F5F1EA]"
+        />
+      ) : (
+        <div className="flex h-36 w-full items-center justify-center bg-[#F5F1EA] text-[13px] text-[#888]">
+          이미지 생성 대기 / 실패
+        </div>
+      )}
       <div className="p-3">
         <h4 className="font-bold text-[#1A1A1A]">{design.name}</h4>
         <p className="mt-1 text-[13px] leading-snug text-[#444]">{design.concept}</p>

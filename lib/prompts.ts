@@ -120,16 +120,18 @@ export function designFeedbackPrompt(artist: string): string {
 
 export const IMAGE_PROMPT_TEMPLATE = `{craftStyle}
 
-Create ONE new nail-tip set inspired by this classroom craft language.
+Create ONE brand-new original nail-tip set. Do NOT copy any reference photo tip-for-tip.
 Layout: {n} artificial nail tips in a horizontal row on clean white.
 
-For THIS set specifically:
+For THIS unique set:
 - Base color: {baseColor}
-- Motif (reinterpreted in gel craft, not a famous painting): {motif}
+- Motif (reinterpreted in gel craft, never a famous painting): {motif}
 - Gel technique: {technique}
-- Mood adjectives only (colors, lines, texture — never artwork titles): {artistMood}
+- Mood adjectives only: {artistMood}
+- Variation direction (must change the look): {variation}
 
-Keep thickness wearable for gel class (raised but not bulky). Each tip can vary slightly but feel like one collection.`;
+Make this set visually distinct from other sets: different density, accent tip placement, and motif scale.
+Keep thickness wearable for gel class. No hands, no text, no watermark, no labels.`;
 
 export function buildImagePrompt(opts: {
   n?: number;
@@ -138,6 +140,7 @@ export function buildImagePrompt(opts: {
   technique: string;
   artistMood: string;
   craftStyle?: string;
+  variation?: string;
 }): string {
   return IMAGE_PROMPT_TEMPLATE.replace(
     "{craftStyle}",
@@ -147,7 +150,11 @@ export function buildImagePrompt(opts: {
     .replace("{baseColor}", opts.baseColor)
     .replace("{motif}", opts.motif)
     .replace("{technique}", opts.technique)
-    .replace("{artistMood}", opts.artistMood);
+    .replace("{artistMood}", opts.artistMood)
+    .replace(
+      "{variation}",
+      opts.variation || "fresh classroom reinterpretation"
+    );
 }
 
 export const CALCULATE_COUNTING_TOOL = {
