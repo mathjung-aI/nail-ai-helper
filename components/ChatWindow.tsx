@@ -2,19 +2,17 @@
 
 import { Composer } from "@/components/Composer";
 import { DesignUploader } from "@/components/DesignUploader";
-import { GroupSelector } from "@/components/GroupSelector";
 import { MessageBubble, SourceSheet } from "@/components/MessageBubble";
 import { ModeTabs } from "@/components/ModeTabs";
 import { SuggestedQuestions } from "@/components/SuggestedQuestions";
-import { getGroup, getSamplesForGroup } from "@/lib/knowledge/artists";
+import { getGroup, GROUPS } from "@/lib/knowledge/artists";
 import { LESSON_CHUNKS } from "@/lib/knowledge/lesson";
 import { MATH_CHUNKS } from "@/lib/knowledge/math";
 import { NAIL_CHUNKS } from "@/lib/knowledge/nail";
 import {
   appendHistory,
-  exportHistoryCsv,
-  exportHistoryJson,
-  loadHistory,
+  bumpImageGenCount,
+  canGenerateImages,
   loadProfile,
   saveProfile,
 } from "@/lib/storage";
@@ -22,10 +20,10 @@ import type {
   ChatMessage,
   ChatMode,
   DesignFeedback,
+  DesignSpecCard,
   KnowledgeChunk,
   Profile,
 } from "@/lib/types";
-import { Download, History, Pencil } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 function uid() {
@@ -34,13 +32,42 @@ function uid() {
 
 function loadingFor(mode: ChatMode) {
   if (mode === "math") return "조합 수를 계산하는 중…";
-  if (mode === "lesson") return "학습지도안을 확인하는 중…";
   return "교재를 찾아보는 중…";
 }
 
+function defaultProfile(group = 1): Profile {
+  const g = getGroup(group);
+  return {
+    group: g.group,
+    artist: g.artist,
+    name: "익명",
+    accentHex: g.accentHex,
+  };
+}
+
+const SAMPLE_CACHE_PREFIX = "nailapp.sampleCache.";
+
+function loadSampleCache(group: number): DesignSpecCard[] | null {
+  try {
+    const raw = sessionStorage.getItem(SAMPLE_CACHE_PREFIX + group);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as DesignSpecCard[];
+    return Array.isArray(parsed) && parsed.length ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveSampleCache(group: number, samples: DesignSpecCard[]) {
+  try {
+    sessionStorage.setItem(SAMPLE_CACHE_PREFIX + group, JSON.stringify(samples));
+  } catch {
+    // quota — ignore
+  }
+}
+
 export function ChatWindow({ mockBadge }: { mockBadge: boolean }) {
-  const [profile, setProfile] = useState<Profile | null>(null);
-  const [showOnboard, setShowOnboard] = useState(false);
+  const [profile, setProfile] = useState<Profile>(defaultProfile(1));
   const [mode, setMode] = useState<ChatMode>("nail");
   const [session, setSession] = useState<1 | 2 | 3>(2);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -48,20 +75,21 @@ export function ChatWindow({ mockBadge }: { mockBadge: boolean }) {
   const [loadLabel, setLoadLabel] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [uploaderOpen, setUploaderOpen] = useState(false);
-  const [historyOpen, setHistoryOpen] = useState(false);
   const [sourceOpen, setSourceOpen] = useState<{
     label: string;
     chunk?: KnowledgeChunk | null;
   } | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
-  const accent = profile?.accentHex || getGroup(profile?.group || 1).accentHex;
+  const accent = profile.accentHex || getGroup(profile.group).accentHex;
 
   useEffect(() => {
-    const p = loadProfile();
-    if (p) {
-      setProfile(p);
+    const saved = loadProfile();
+    if (saved?.group) {
+      setProfile(defaultProfile(saved.group));
     } else {
-      setShowOnboard(true);
+      const p = defaultProfile(1);
+      saveProfile(p);
+      setProfile(p);
     }
   }, []);
 
@@ -69,14 +97,17 @@ export function ChatWindow({ mockBadge }: { mockBadge: boolean }) {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, busy]);
 
-  function persistProfile(p: Profile) {
+  function changeGroup(group: number) {
+    if (group === profile.group) return;
+    const p = defaultProfile(group);
     saveProfile(p);
     setProfile(p);
-    setShowOnboard(false);
+    setMessages([]);
+    setError(null);
   }
 
   async function sendQuestion(text: string) {
-    if (!profile || busy) return;
+    if (busy) return;
     setError(null);
     const userMsg: ChatMessage = {
       id: uid(),
@@ -182,20 +213,67 @@ export function ChatWindow({ mockBadge }: { mockBadge: boolean }) {
   }
 
   async function showSamples() {
-    if (!profile) return;
+    if (busy) return;
     setBusy(true);
-    setLoadLabel("샘플 디자인을 불러오는 중…");
+    setError(null);
+    setLoadLabel(
+      mockBadge
+        ? "샘플 디자인을 불러오는 중…"
+        : "AI로 샘플 디자인을 그리는 중… (잠시만요)"
+    );
+
     try {
-      const samples = getSamplesForGroup(profile.group);
-      const msg: ChatMessage = {
-        id: uid(),
-        role: "assistant",
-        content: `${profile.group}조 · ${profile.artist} 분위기에 맞춘 샘플 3안이에요. 예시이니 조 분석 요소로 바꿔 보세요.`,
-        designs: samples,
-        createdAt: Date.now(),
-        mode,
-      };
-      setMessages((prev) => [...prev, msg]);
+      const cached = loadSampleCache(profile.group);
+      if (cached) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: uid(),
+            role: "assistant",
+            content: `${profile.group}조 · ${profile.artist} 분위기에 맞춘 샘플 3안이에요. 예시이니 조 분석 요소로 바꿔 보세요.`,
+            designs: cached,
+            createdAt: Date.now(),
+            mode,
+          },
+        ]);
+        return;
+      }
+
+      const wantAi = !mockBadge && canGenerateImages(3);
+      const res = await fetch("/api/design-generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          samplesOnly: true,
+          withImage: wantAi,
+          group: profile.group,
+          artist: profile.artist,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || "fail");
+
+      const samples = (data.samples as DesignSpecCard[]) || [];
+      if (data.generatedWithAi) bumpImageGenCount(samples.length);
+      saveSampleCache(profile.group, samples);
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: uid(),
+          role: "assistant",
+          content: data.generatedWithAi
+            ? `${profile.group}조 · ${profile.artist} 분위기로 AI가 그린 샘플 3안이에요. 예시이니 조 분석 요소로 바꿔 보세요.`
+            : `${profile.group}조 · ${profile.artist} 분위기에 맞춘 샘플 3안이에요. (MOCK 모드 — 실제 AI 이미지는 .env.local에 키를 넣고 MOCK_MODE=false 로 바꿔 주세요.)`,
+          designs: samples,
+          createdAt: Date.now(),
+          mode,
+        },
+      ]);
+    } catch {
+      setError(
+        "지금은 답변을 가져오지 못했어요. 잠시 후 다시 시도하거나 선생님께 알려 주세요."
+      );
     } finally {
       setBusy(false);
       setLoadLabel(null);
@@ -203,19 +281,26 @@ export function ChatWindow({ mockBadge }: { mockBadge: boolean }) {
   }
 
   function onFeedback(feedback: DesignFeedback) {
-    const msg: ChatMessage = {
-      id: uid(),
-      role: "assistant",
-      content: "업로드한 디자인을 루브릭으로 살펴봤어요. 정답은 없으니 점검 질문으로 조에서 다듬어 보세요.",
-      feedback,
-      createdAt: Date.now(),
-      mode: "nail",
-    };
-    setMessages((prev) => [...prev, msg]);
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: uid(),
+        role: "assistant",
+        content:
+          "업로드한 디자인을 루브릭으로 살펴봤어요. 정답은 없으니 점검 질문으로 조에서 다듬어 보세요.",
+        feedback,
+        createdAt: Date.now(),
+        mode: "nail",
+      },
+    ]);
   }
 
   function findChunk(label: string): KnowledgeChunk | null {
-    const all = [...NAIL_CHUNKS, ...MATH_CHUNKS, ...(LESSON_CHUNKS as KnowledgeChunk[])];
+    const all = [
+      ...NAIL_CHUNKS,
+      ...MATH_CHUNKS,
+      ...(LESSON_CHUNKS as KnowledgeChunk[]),
+    ];
     return (
       all.find(
         (c) =>
@@ -226,53 +311,63 @@ export function ChatWindow({ mockBadge }: { mockBadge: boolean }) {
     );
   }
 
-  const g = profile ? getGroup(profile.group) : null;
+  const g = getGroup(profile.group);
 
   return (
     <div className="flex h-[100dvh] flex-col bg-[#F7F3EC]">
-      <header
-        className="flex items-center justify-between gap-2 px-3 py-3 text-white"
-        style={{ background: accent }}
-      >
-        <div>
+      <header className="bg-[#2A2A2A] px-3 py-3 text-white">
+        <div className="flex items-center justify-between gap-2">
           <h1 className="text-base font-bold sm:text-lg">
             🎨 네일아트 AI 학습 도우미
           </h1>
           {mockBadge && (
-            <span className="mt-0.5 inline-block rounded bg-white/20 px-1.5 py-0.5 text-[10px] font-semibold">
+            <span className="rounded bg-white/20 px-1.5 py-0.5 text-[10px] font-semibold">
               MOCK 모드
             </span>
           )}
         </div>
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => setHistoryOpen(true)}
-            className="min-h-11 min-w-11 rounded-xl bg-white/15"
-            aria-label="질문 기록"
-          >
-            <History className="mx-auto" size={18} />
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowOnboard(true)}
-            className="min-h-11 rounded-xl bg-white/15 px-3 text-sm font-semibold"
-          >
-            {profile ? `${profile.group}조 · ${profile.artist}` : "조 선택"}{" "}
-            <Pencil className="ml-1 inline" size={14} />
-          </button>
+        <div
+          className="mt-3 grid grid-cols-5 gap-1.5"
+          role="group"
+          aria-label="조 선택"
+        >
+          {GROUPS.map((item) => {
+            const active = profile.group === item.group;
+            return (
+              <button
+                key={item.group}
+                type="button"
+                onClick={() => changeGroup(item.group)}
+                className="min-h-11 rounded-xl px-1 text-sm font-bold transition"
+                style={
+                  active
+                    ? { background: item.accentHex, color: "#fff" }
+                    : { background: "rgba(255,255,255,0.12)", color: "#fff" }
+                }
+                aria-pressed={active}
+                title={item.artist}
+              >
+                {item.group}조
+              </button>
+            );
+          })}
         </div>
+        <p className="mt-2 text-center text-[13px] text-white/85">
+          {g.group}조 · {g.artist}
+        </p>
       </header>
 
       <ModeTabs mode={mode} onChange={setMode} accent={accent} />
 
       <main className="flex-1 overflow-y-auto px-3 py-3">
-        {messages.length === 0 && g && (
-          <div className="mx-auto max-w-2xl rounded-2xl bg-white/80 p-5 border border-[#E8E0D4]">
+        {messages.length === 0 && (
+          <div className="mx-auto max-w-2xl rounded-2xl border border-[#E8E0D4] bg-white/80 p-5">
             <p className="text-sm font-semibold" style={{ color: accent }}>
               {g.group}조 · {g.artist}
             </p>
-            <p className="mt-2 text-[16px] leading-relaxed text-[#333]">{g.intro}</p>
+            <p className="mt-2 text-[16px] leading-relaxed text-[#333]">
+              {g.intro}
+            </p>
             <p className="mt-3 text-[14px] text-[#666]">
               실습 중 궁금한 점을 물어보거나, 아래 추천 질문·샘플을 눌러 보세요.
             </p>
@@ -346,7 +441,7 @@ export function ChatWindow({ mockBadge }: { mockBadge: boolean }) {
 
       <Composer
         accent={accent}
-        disabled={busy || !profile}
+        disabled={busy}
         loadingLabel={loadLabel}
         onSend={sendQuestion}
         onUpload={() => setUploaderOpen(true)}
@@ -357,22 +452,13 @@ export function ChatWindow({ mockBadge }: { mockBadge: boolean }) {
         교육부(2025) NCS 「입체 네일아트」 · 공통수학1 경우의 수 · 지도교사 박기연
       </footer>
 
-      <GroupSelector
-        open={showOnboard}
-        initial={profile}
-        onSave={persistProfile}
-        onClose={profile ? () => setShowOnboard(false) : undefined}
+      <DesignUploader
+        open={uploaderOpen}
+        profile={profile}
+        accent={accent}
+        onClose={() => setUploaderOpen(false)}
+        onResult={(fb) => onFeedback(fb)}
       />
-
-      {profile && (
-        <DesignUploader
-          open={uploaderOpen}
-          profile={profile}
-          accent={accent}
-          onClose={() => setUploaderOpen(false)}
-          onResult={(fb) => onFeedback(fb)}
-        />
-      )}
 
       <SourceSheet
         open={!!sourceOpen}
@@ -380,80 +466,6 @@ export function ChatWindow({ mockBadge }: { mockBadge: boolean }) {
         chunk={sourceOpen?.chunk}
         onClose={() => setSourceOpen(null)}
       />
-
-      {historyOpen && (
-        <HistorySheet
-          onClose={() => setHistoryOpen(false)}
-          accent={accent}
-        />
-      )}
-    </div>
-  );
-}
-
-function HistorySheet({
-  onClose,
-  accent,
-}: {
-  onClose: () => void;
-  accent: string;
-}) {
-  const rows = loadHistory();
-
-  function download(kind: "json" | "csv") {
-    const content = kind === "json" ? exportHistoryJson() : exportHistoryCsv();
-    const blob = new Blob([content], {
-      type: kind === "json" ? "application/json" : "text/csv",
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `nailapp-history.${kind}`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center">
-      <div className="max-h-[80vh] w-full max-w-lg overflow-y-auto rounded-t-2xl bg-white p-5 sm:rounded-2xl">
-        <div className="flex items-center justify-between">
-          <h3 className="text-lg font-bold">내 질문 기록</h3>
-          <button type="button" onClick={onClose} className="min-h-10 min-w-10 rounded-lg bg-[#F0EBE3]">
-            ✕
-          </button>
-        </div>
-        <div className="mt-3 flex gap-2">
-          <button
-            type="button"
-            onClick={() => download("json")}
-            className="inline-flex min-h-11 flex-1 items-center justify-center gap-1 rounded-xl text-sm font-bold text-white"
-            style={{ background: accent }}
-          >
-            <Download size={16} /> 교사에게 제출 (JSON)
-          </button>
-          <button
-            type="button"
-            onClick={() => download("csv")}
-            className="min-h-11 flex-1 rounded-xl bg-[#F0EBE3] text-sm font-bold"
-          >
-            CSV
-          </button>
-        </div>
-        <ul className="mt-4 space-y-2">
-          {rows.length === 0 && (
-            <li className="text-[14px] text-[#666]">아직 기록이 없어요.</li>
-          )}
-          {[...rows].reverse().map((r, i) => (
-            <li key={i} className="rounded-lg border border-[#EEE] p-2 text-[13px]">
-              <p className="font-semibold">
-                {r.group}조 · {r.name} · {r.mode}
-              </p>
-              <p className="text-[#333]">Q. {r.question}</p>
-              <p className="text-[#666]">A. {r.answerSummary}</p>
-            </li>
-          ))}
-        </ul>
-      </div>
     </div>
   );
 }

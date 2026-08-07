@@ -20,11 +20,14 @@ npm run dev
 
 ### API 키 교체 방법
 1. `.env.local` 파일을 연다.
-2. `OPENAI_API_KEY=sk-proj-DUMMY-...` 줄을 실제 키로 바꾼다.
+2. `OPENAI_API_KEY=sk-proj-DUMMY-...` 줄을 **실제 OpenAI API 키**로 바꾼다.
 3. `MOCK_MODE=false` 로 바꾼다.
 4. 개발 서버를 재시작한다. (`Ctrl+C` 후 `npm run dev`)
+5. 「샘플 디자인 보기」를 누르면 키로 AI 네일 이미지를 생성한다. (세션당 최대 6장, 같은 조는 브라우저에 캐시)
+
 ※ Vercel 배포 시에는 Settings → Environment Variables에 동일한 이름으로 등록한다.
 ※ 키는 절대 GitHub에 올리지 않는다. `.env.local`은 `.gitignore`에 포함되어 있다.
+※ `MOCK_MODE=true` 이거나 가상 키이면 샘플은 SVG 폴백 이미지를 보여 준다.
 
 ## 주요 기능
 

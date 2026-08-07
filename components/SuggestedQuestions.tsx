@@ -3,10 +3,9 @@
 import { SUGGESTED_QUESTIONS } from "@/lib/knowledge/lesson";
 import type { ChatMode, SuggestedQuestion } from "@/lib/types";
 
-const MODE_TO_CAT: Record<ChatMode, SuggestedQuestion["category"]> = {
+const MODE_TO_CAT: Record<"nail" | "math", SuggestedQuestion["category"]> = {
   nail: "nail",
   math: "math",
-  lesson: "lesson",
 };
 
 export function SuggestedQuestions({
@@ -26,11 +25,13 @@ export function SuggestedQuestions({
   onSamples: () => void;
   extra?: string[];
 }) {
-  const cat = MODE_TO_CAT[mode];
+  const cat =
+    mode === "math" ? MODE_TO_CAT.math : MODE_TO_CAT.nail;
   const chips = [
     ...SUGGESTED_QUESTIONS.filter(
       (q) =>
         (q.session === session || q.session === "common") &&
+        q.category !== "lesson" &&
         (q.category === cat || q.category === "design")
     ),
   ];

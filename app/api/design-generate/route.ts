@@ -8,10 +8,42 @@ import {
   chatModel,
 } from "@/lib/openai";
 import { buildImagePrompt } from "@/lib/prompts";
+import type { DesignSpecCard } from "@/lib/types";
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
-export const maxDuration = 90;
+export const maxDuration = 120;
+
+async function generateNailImage(opts: {
+  baseColor: string;
+  motif: string;
+  technique: string;
+  artistMood: string;
+}): Promise<string | null> {
+  const openai = getOpenAI();
+  if (!openai) return null;
+
+  const prompt = buildImagePrompt({
+    n: 5,
+    baseColor: opts.baseColor,
+    motif: opts.motif,
+    technique: opts.technique,
+    artistMood: opts.artistMood,
+  });
+
+  const img = await openai.images.generate({
+    model: imageModel(),
+    prompt,
+    size: "1024x1024",
+    n: 1,
+  });
+
+  const b64 = img.data?.[0]?.b64_json;
+  const url = img.data?.[0]?.url;
+  if (b64) return `data:image/png;base64,${b64}`;
+  if (url) return url;
+  return null;
+}
 
 export async function POST(req: Request) {
   try {
@@ -23,13 +55,40 @@ export async function POST(req: Request) {
     const technique = body.technique || g.techniques[0];
     const motif = body.motif || g.motifs[0];
     const freeText = body.freeText || "";
-    const count = Math.min(3, Math.max(1, Number(body.count || 1))) as 1 | 2 | 3;
+    const count = Math.min(3, Math.max(1, Number(body.count || 1))) as
+      | 1
+      | 2
+      | 3;
     const withImage = Boolean(body.withImage);
     const samplesOnly = Boolean(body.samplesOnly);
 
+    // 조별 샘플 3안 + (키 사용 시) AI 이미지 생성
     if (samplesOnly) {
+      const samples: DesignSpecCard[] = getSamplesForGroup(group);
+      const useAi = withImage && !isMockMode() && !!getOpenAI();
+
+      if (useAi) {
+        for (let i = 0; i < samples.length; i++) {
+          const s = samples[i];
+          try {
+            const imageUrl = await generateNailImage({
+              baseColor: s.base,
+              motif: s.motif,
+              technique: s.technique,
+              artistMood: g.mood,
+            });
+            if (imageUrl) samples[i] = { ...s, imageUrl };
+          } catch (err) {
+            console.error(`sample image ${s.id} failed`, err);
+            // 실패 시 SVG 폴백 유지
+          }
+        }
+      }
+
       return NextResponse.json({
-        samples: getSamplesForGroup(group),
+        ok: true,
+        samples,
+        generatedWithAi: useAi,
       });
     }
 
@@ -41,7 +100,6 @@ export async function POST(req: Request) {
       freeText,
     });
 
-    // Enhance spec with chat model when not mock
     if (!isMockMode() && getOpenAI()) {
       try {
         const openai = getOpenAI()!;
@@ -72,29 +130,22 @@ export async function POST(req: Request) {
     if (withImage) {
       if (isMockMode() || !getOpenAI()) {
         for (let i = 0; i < count; i++) {
-          const letter = String.fromCharCode(97 + i); // a,b,c
+          const letter = String.fromCharCode(97 + i);
           images.push(`/samples/${group}-${letter}.svg`);
         }
       } else {
-        const openai = getOpenAI()!;
-        const prompt = buildImagePrompt({
-          n: 5,
-          baseColor,
-          motif,
-          technique,
-          artistMood: g.mood, // 작가명 없음
-        });
         for (let i = 0; i < count; i++) {
-          const img = await openai.images.generate({
-            model: imageModel(),
-            prompt,
-            size: "1024x1024",
-            n: 1,
-          });
-          const b64 = img.data?.[0]?.b64_json;
-          const url = img.data?.[0]?.url;
-          if (b64) images.push(`data:image/png;base64,${b64}`);
-          else if (url) images.push(url);
+          try {
+            const imageUrl = await generateNailImage({
+              baseColor,
+              motif,
+              technique,
+              artistMood: g.mood,
+            });
+            if (imageUrl) images.push(imageUrl);
+          } catch (err) {
+            console.error("image generate failed", err);
+          }
         }
       }
     }
@@ -102,6 +153,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, spec, images });
   } catch (e) {
     console.error(e);
-    return NextResponse.json({ ok: false, error: FRIENDLY_ERROR }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: FRIENDLY_ERROR },
+      { status: 500 }
+    );
   }
 }
