@@ -253,7 +253,9 @@ export function ChatWindow({ mockBadge }: { mockBadge: boolean }) {
         {
           id: uid(),
           role: "assistant",
-          content: `${profile.group}조 · ${profile.artist} 분위기로 AI가 새로 그린 샘플 ${samples.length}안이에요. 참고 스타일만 반영했고, 요청할 때마다 다르게 나옵니다. 예시이니 조 분석 요소로 바꿔 보세요.`,
+          content: generatedWithAi
+            ? `${profile.group}조 · ${profile.artist} 화풍을 유지한 채, 샘플1 디자인 요소 + 학생 시안(샘플2·3)을 참고해 AI가 새로 그린 샘플이에요. 요청마다 변주됩니다. 예시이니 조 분석 요소로 바꿔 보세요.`
+            : `${profile.group}조 · ${profile.artist} 샘플을 만들지 못했어요.`,
           designs: samples,
           createdAt: Date.now(),
           mode,
