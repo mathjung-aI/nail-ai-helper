@@ -5,7 +5,7 @@ import { DesignUploader } from "@/components/DesignUploader";
 import { MessageBubble, SourceSheet } from "@/components/MessageBubble";
 import { ModeTabs } from "@/components/ModeTabs";
 import { SuggestedQuestions } from "@/components/SuggestedQuestions";
-import { getGroup, GROUPS } from "@/lib/knowledge/artists";
+import { getGroup, getSamplesForGroup, GROUPS } from "@/lib/knowledge/artists";
 import { LESSON_CHUNKS } from "@/lib/knowledge/lesson";
 import { MATH_CHUNKS } from "@/lib/knowledge/math";
 import { NAIL_CHUNKS } from "@/lib/knowledge/nail";
@@ -45,7 +45,7 @@ function defaultProfile(group = 1): Profile {
   };
 }
 
-const SAMPLE_CACHE_PREFIX = "nailapp.sampleCache.v2.";
+const SAMPLE_CACHE_PREFIX = "nailapp.sampleCache.v3.";
 
 function loadSampleCache(group: number): DesignSpecCard[] | null {
   try {
@@ -219,8 +219,10 @@ export function ChatWindow({ mockBadge }: { mockBadge: boolean }) {
     setLoadLabel(
       mockBadge
         ? "샘플 디자인을 불러오는 중…"
-        : "AI로 샘플 디자인을 그리는 중… (잠시만요)"
+        : "샘플 디자인을 준비하는 중… (AI 초안은 시간이 조금 걸릴 수 있어요)"
     );
+
+    const fallbackSamples = () => getSamplesForGroup(profile.group);
 
     try {
       const cached = loadSampleCache(profile.group);
@@ -239,22 +241,39 @@ export function ChatWindow({ mockBadge }: { mockBadge: boolean }) {
         return;
       }
 
-      const wantAi = !mockBadge && canGenerateImages(3);
-      const res = await fetch("/api/design-generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          samplesOnly: true,
-          withImage: wantAi,
-          group: profile.group,
-          artist: profile.artist,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.ok) throw new Error(data.error || "fail");
+      const wantAi = !mockBadge && canGenerateImages(1);
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 55_000);
 
-      const samples = (data.samples as DesignSpecCard[]) || [];
-      if (data.generatedWithAi) bumpImageGenCount(samples.length);
+      let samples: DesignSpecCard[] = [];
+      let generatedWithAi = false;
+
+      try {
+        const res = await fetch("/api/design-generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          signal: controller.signal,
+          body: JSON.stringify({
+            samplesOnly: true,
+            withImage: wantAi,
+            group: profile.group,
+            artist: profile.artist,
+          }),
+        });
+        clearTimeout(timer);
+        const data = await res.json().catch(() => null);
+        if (data?.ok && Array.isArray(data.samples) && data.samples.length) {
+          samples = data.samples as DesignSpecCard[];
+          generatedWithAi = Boolean(data.generatedWithAi);
+        } else {
+          samples = fallbackSamples();
+        }
+      } catch {
+        clearTimeout(timer);
+        samples = fallbackSamples();
+      }
+
+      if (generatedWithAi) bumpImageGenCount(1);
       saveSampleCache(profile.group, samples);
 
       setMessages((prev) => [
@@ -262,18 +281,27 @@ export function ChatWindow({ mockBadge }: { mockBadge: boolean }) {
         {
           id: uid(),
           role: "assistant",
-          content: data.generatedWithAi
-            ? `${profile.group}조 · ${profile.artist} 분위기로, 학생 실습 스타일(참고 샘플)을 반영해 AI가 그린 샘플 3안이에요. 예시이니 조 분석 요소로 바꿔 보세요.`
-            : `${profile.group}조 · ${profile.artist} 분위기에 맞춘 샘플 3안이에요. (참고: 학생 디자인 스타일 이미지 / MOCK이면 참고 이미지가 먼저 보여요.)`,
+          content: generatedWithAi
+            ? `${profile.group}조 · ${profile.artist} 분위기로 AI 초안 1안 + 학생 스타일 참고 샘플이에요. 예시이니 조 분석 요소로 바꿔 보세요.`
+            : `${profile.group}조 · ${profile.artist} 분위기의 샘플 3안이에요. (학생 실습 스타일 참고 이미지) 예시이니 조에서 요소를 바꿔 보세요.`,
           designs: samples,
           createdAt: Date.now(),
           mode,
         },
       ]);
     } catch {
-      setError(
-        "지금은 답변을 가져오지 못했어요. 잠시 후 다시 시도하거나 선생님께 알려 주세요."
-      );
+      const samples = fallbackSamples();
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: uid(),
+          role: "assistant",
+          content: `${profile.group}조 · ${profile.artist} 분위기의 샘플 3안이에요. (학생 실습 스타일 참고 이미지)`,
+          designs: samples,
+          createdAt: Date.now(),
+          mode,
+        },
+      ]);
     } finally {
       setBusy(false);
       setLoadLabel(null);

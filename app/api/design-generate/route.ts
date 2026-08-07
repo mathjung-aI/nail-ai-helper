@@ -19,7 +19,24 @@ import { NextResponse } from "next/server";
 import path from "path";
 
 export const runtime = "nodejs";
-export const maxDuration = 120;
+export const maxDuration = 60;
+
+const AI_TIMEOUT_MS = 40_000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
+  return new Promise((resolve) => {
+    const t = setTimeout(() => resolve(null), ms);
+    promise
+      .then((v) => {
+        clearTimeout(t);
+        resolve(v);
+      })
+      .catch(() => {
+        clearTimeout(t);
+        resolve(null);
+      });
+  });
+}
 
 async function generateNailImage(opts: {
   group: number;
@@ -39,9 +56,9 @@ async function generateNailImage(opts: {
     artistMood: opts.artistMood,
   });
 
-  const refPaths = resolveStyleRefPaths(opts.group);
+  // 참고 이미지는 조별 1장만 사용 (속도·안정성)
+  const refPaths = resolveStyleRefPaths(opts.group).slice(0, 1);
 
-  // 학생 샘플 스타일 참고 이미지와 함께 생성 (images.edit)
   if (refPaths.length > 0) {
     try {
       const files = await Promise.all(
@@ -57,9 +74,9 @@ async function generateNailImage(opts: {
         image: files,
         prompt: `${prompt}
 
-Use the attached student nail-art samples ONLY as craft-style / technique / presentation references (tip shape, gel emboss, pearls, brush texture, white-background tip row). Create a NEW original design for the palette and motif above. Do not copy any tip from the references.`,
+Use the attached student nail-art sample ONLY as craft-style reference (tip shape, gel emboss, pearls/brush texture, white-background tip row). Create a NEW original design. Do not copy tips from the reference.`,
         size: "1024x1024",
-        input_fidelity: "high",
+        input_fidelity: "low",
       });
 
       const b64 = edited.data?.[0]?.b64_json;
@@ -71,18 +88,20 @@ Use the attached student nail-art samples ONLY as craft-style / technique / pres
     }
   }
 
-  // 폴백: 텍스트 프롬프트만으로 생성
-  const img = await openai.images.generate({
-    model: imageModel(),
-    prompt,
-    size: "1024x1024",
-    n: 1,
-  });
-
-  const b64 = img.data?.[0]?.b64_json;
-  const url = img.data?.[0]?.url;
-  if (b64) return `data:image/png;base64,${b64}`;
-  if (url) return url;
+  try {
+    const img = await openai.images.generate({
+      model: imageModel(),
+      prompt,
+      size: "1024x1024",
+      n: 1,
+    });
+    const b64 = img.data?.[0]?.b64_json;
+    const url = img.data?.[0]?.url;
+    if (b64) return `data:image/png;base64,${b64}`;
+    if (url) return url;
+  } catch (err) {
+    console.error("image generate failed", err);
+  }
   return null;
 }
 
@@ -93,14 +112,20 @@ function attachFallbackImages(
   const urls = styleRefPublicUrls(group);
   return samples.map((s, i) => ({
     ...s,
+    // AI 결과가 있어도 너무 크면 클라이언트 파싱 실패할 수 있어,
+    // data URL은 유지하되 없는 칸만 참고 이미지로 채움
     imageUrl: s.imageUrl || urls[i % urls.length],
   }));
 }
 
 export async function POST(req: Request) {
+  let groupForFallback = 1;
+  let samplesOnlyFallback = false;
   try {
     const body = await req.json();
     const group = Number(body.group || body.profile?.group || 1);
+    groupForFallback = group;
+    samplesOnlyFallback = Boolean(body.samplesOnly);
     const g = getGroup(group);
     const artist = body.artist || g.artist;
     const baseColor = body.baseColor || g.baseColors[0];
@@ -113,36 +138,39 @@ export async function POST(req: Request) {
       | 3;
     const withImage = Boolean(body.withImage);
     const samplesOnly = Boolean(body.samplesOnly);
+    // 명시적으로 false면 AI 생략 (빠른 샘플 카드)
+    const wantAi = withImage !== false;
 
     if (samplesOnly) {
       let samples: DesignSpecCard[] = getSamplesForGroup(group);
-      const useAi = withImage && !isMockMode() && !!getOpenAI();
+      let generatedWithAi = false;
+      const useAi = wantAi && !isMockMode() && !!getOpenAI();
 
-      if (useAi) {
-        for (let i = 0; i < samples.length; i++) {
-          const s = samples[i];
-          try {
-            const imageUrl = await generateNailImage({
-              group,
-              baseColor: s.base,
-              motif: s.motif,
-              technique: s.technique,
-              artistMood: g.mood,
-            });
-            if (imageUrl) samples[i] = { ...s, imageUrl };
-          } catch (err) {
-            console.error(`sample image ${s.id} failed`, err);
-          }
+      if (useAi && samples.length > 0) {
+        // 타임아웃 방지를 위해 첫 안 1장만 AI 생성 시도
+        const s = samples[0];
+        const imageUrl = await withTimeout(
+          generateNailImage({
+            group,
+            baseColor: s.base,
+            motif: s.motif,
+            technique: s.technique,
+            artistMood: g.mood,
+          }),
+          AI_TIMEOUT_MS
+        );
+        if (imageUrl) {
+          samples[0] = { ...s, imageUrl };
+          generatedWithAi = true;
         }
       }
 
-      // AI 실패·MOCK 시 학생 참고 스타일 이미지로 폴백
       samples = attachFallbackImages(samples, group);
 
       return NextResponse.json({
         ok: true,
         samples,
-        generatedWithAi: useAi,
+        generatedWithAi,
       });
     }
 
@@ -185,22 +213,20 @@ export async function POST(req: Request) {
       if (isMockMode() || !getOpenAI()) {
         images.push(...styleRefPublicUrls(group).slice(0, count));
       } else {
-        for (let i = 0; i < count; i++) {
-          try {
-            const imageUrl = await generateNailImage({
-              group,
-              baseColor,
-              motif,
-              technique,
-              artistMood: g.mood,
-            });
-            if (imageUrl) images.push(imageUrl);
-          } catch (err) {
-            console.error("image generate failed", err);
-          }
-        }
-        if (images.length === 0) {
-          images.push(...styleRefPublicUrls(group).slice(0, count));
+        const imageUrl = await withTimeout(
+          generateNailImage({
+            group,
+            baseColor,
+            motif,
+            technique,
+            artistMood: g.mood,
+          }),
+          AI_TIMEOUT_MS
+        );
+        if (imageUrl) images.push(imageUrl);
+        while (images.length < count) {
+          const urls = styleRefPublicUrls(group);
+          images.push(urls[images.length % urls.length]);
         }
       }
     }
@@ -208,6 +234,16 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, spec, images });
   } catch (e) {
     console.error(e);
+    if (samplesOnlyFallback) {
+      return NextResponse.json({
+        ok: true,
+        samples: attachFallbackImages(
+          getSamplesForGroup(groupForFallback),
+          groupForFallback
+        ),
+        generatedWithAi: false,
+      });
+    }
     return NextResponse.json(
       { ok: false, error: FRIENDLY_ERROR },
       { status: 500 }
