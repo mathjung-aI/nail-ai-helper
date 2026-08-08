@@ -2,7 +2,7 @@
 
 import type { ChatMode } from "@/lib/types";
 
-const TABS: { id: Exclude<ChatMode, "lesson">; label: string; emoji: string }[] =
+const TABS: { id: "nail" | "math"; label: string; emoji: string }[] =
   [
     { id: "nail", label: "전공 실습", emoji: "🎨" },
     { id: "math", label: "경우의 수", emoji: "🔢" },
@@ -14,7 +14,7 @@ export function ModeTabs({
   accent,
 }: {
   mode: ChatMode;
-  onChange: (m: ChatMode) => void;
+  onChange: (m: "nail" | "math") => void;
   accent: string;
 }) {
   return (

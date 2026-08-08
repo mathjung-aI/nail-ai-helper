@@ -51,7 +51,11 @@ async function streamText(text: string, meta: unknown): Promise<Response> {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const mode = (body.mode as ChatMode) || "nail";
+    const mode = ((body.mode as ChatMode) || "assistant") as ChatMode;
+    const effectiveMode: ChatMode =
+      mode === "nail" || mode === "math" || mode === "lesson"
+        ? mode
+        : "assistant";
     const profile = body.profile as Profile;
     const messages = (body.messages as IncomingMessage[]) || [];
 
@@ -67,7 +71,13 @@ export async function POST(req: Request) {
 
     // MOCK
     if (isMockMode() || !getOpenAI()) {
-      const mock = mockChatReply(mode, lastUser, profile);
+      const mockMode =
+        effectiveMode === "assistant"
+          ? /경우|순열|조합|가지|nPr|nCr|곱의|합의/i.test(lastUser)
+            ? "math"
+            : "nail"
+          : effectiveMode;
+      const mock = mockChatReply(mockMode, lastUser, profile);
       return streamText(mock.text, {
         sources: mock.sources,
         followUps: mock.followUps,
@@ -76,15 +86,18 @@ export async function POST(req: Request) {
     }
 
     const openai = getOpenAI()!;
-    const chunks = retrieve(lastUser, mode, 3);
+    const chunks = retrieve(lastUser, effectiveMode, 4);
     const system = buildSystemPrompt(
-      mode,
+      effectiveMode,
       profile,
       formatChunksForPrompt(chunks)
     );
     const recent = messages.slice(-20); // ~10 turns
 
-    const tools = mode === "math" ? [CALCULATE_COUNTING_TOOL] : undefined;
+    const tools =
+      effectiveMode === "math" || effectiveMode === "assistant"
+        ? [CALCULATE_COUNTING_TOOL]
+        : undefined;
 
     let countingResult = null as ReturnType<typeof calculateCounting> | null;
 
@@ -100,7 +113,7 @@ export async function POST(req: Request) {
       model: chatModel(),
       messages: baseMessages,
       tools,
-      tool_choice: mode === "math" ? "auto" : undefined,
+      tool_choice: tools ? "auto" : undefined,
       max_tokens: 700,
       stream: false,
     });

@@ -1,4 +1,4 @@
-export type Domain = "nail" | "math" | "lesson";
+export type Domain = "nail" | "math" | "lesson" | "assistant";
 
 export type ChatMode = Domain;
 
@@ -74,6 +74,13 @@ export type DesignFeedback = {
   improvements: string[];
   checkQuestions: string[];
   safetyNotes: string[];
+  /** 색·모티브 선택과 연결한 경우의 수 조언 */
+  mathAdvice?: {
+    summary: string;
+    principle: string;
+    example: string;
+    tip: string;
+  } | null;
 };
 
 export type DesignSpec = {

@@ -1,3 +1,4 @@
+import { getGroup } from "@/lib/knowledge/artists";
 import { mockDesignFeedback } from "@/lib/mock/responses";
 import {
   FRIENDLY_ERROR,
@@ -58,10 +59,12 @@ export async function POST(req: Request) {
       );
     }
 
+    const g = getGroup(profile.group || 1);
+
     if (isMockMode() || !getOpenAI()) {
       return NextResponse.json({
         ok: true,
-        feedback: mockDesignFeedback(profile.artist),
+        feedback: mockDesignFeedback(profile.artist || g.artist, g),
       });
     }
 
@@ -73,7 +76,15 @@ export async function POST(req: Request) {
     const completion = await openai.chat.completions.create({
       model: visionModel(),
       messages: [
-        { role: "system", content: designFeedbackPrompt(profile.artist) },
+        {
+          role: "system",
+          content: designFeedbackPrompt(profile.artist || g.artist, {
+            baseColors: g.baseColors,
+            techniques: g.techniques,
+            motifs: g.motifs,
+            countingExample: g.countingExample,
+          }),
+        },
         {
           role: "user",
           content: [
@@ -81,7 +92,7 @@ export async function POST(req: Request) {
               type: "text",
               text: note
                 ? `학생 메모: ${note}`
-                : "이 네일 팁 사진을 루브릭으로 봐 주세요.",
+                : "이 네일 팁 사진을 루브릭과 경우의 수 관점으로 봐 주세요.",
             },
             {
               type: "image_url",
@@ -90,7 +101,7 @@ export async function POST(req: Request) {
           ],
         },
       ],
-      max_tokens: 900,
+      max_tokens: 1100,
     });
 
     const raw = completion.choices[0]?.message?.content || "";
@@ -109,6 +120,7 @@ export async function POST(req: Request) {
             "10팁 통일감은 어떤가요?",
           ],
           safetyNotes: [],
+          mathAdvice: null,
         } satisfies DesignFeedback,
         rawFallback: true,
       });

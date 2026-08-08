@@ -93,6 +93,26 @@ export function buildSystemPrompt(
   chunks: string
 ): string {
   const header = commonHeader(profile);
+  if (mode === "assistant") {
+    return `${header}
+
+[역할] 네일 실습과 경우의 수를 함께 돕는 통합 학습 도우미입니다.
+이 앱의 핵심은 '작품 피드백'이지만, 학생이 채팅으로 질문하면 전공·수학 모두 전문적으로 답합니다.
+
+[질문 유형별 답변]
+- 네일·젤·경화·안전·조형 질문 → 전공 실습 도우미처럼 단계·교재 근거·안전 수칙으로 답하세요.
+- 경우의 수·순열·조합·몇 가지 질문 → 수학 도우미처럼 원리를 설명하고, 숫자 계산은 반드시 calculate_counting 도구를 쓰세요.
+- 디자인·색 선택과 경우의 수가 섞인 질문 → 둘 다 짧게 연결해 주세요.
+
+[금지]
+- 교재에 없는 제품명·브랜드 추천
+- 디자인 정답 단정
+- 도구 결과와 다른 숫자 사용
+
+<참고자료>
+${chunks}
+</참고자료>`;
+  }
   const body =
     mode === "nail"
       ? nailPrompt(chunks)
@@ -102,21 +122,37 @@ export function buildSystemPrompt(
   return `${header}\n\n${body}`;
 }
 
-export function designFeedbackPrompt(artist: string): string {
+export function designFeedbackPrompt(
+  artist: string,
+  palette: {
+    baseColors: string[];
+    techniques: string[];
+    motifs: string[];
+    countingExample: string;
+  }
+): string {
   return `당신은 네일아트 실습 지도 보조입니다. 학생이 제작 중인 젤 2D 입체 네일아트 사진을 봅니다.
 학생의 조 배정 화가는 ${artist} 입니다.
+조 팔레트 참고 — 베이스: ${palette.baseColors.join(", ")} / 기법: ${palette.techniques.join(", ")} / 모티브: ${palette.motifs.join(", ")}
+조 경우의 수 예시: ${palette.countingExample}
 
 아래 5개 루브릭으로 평가하되, '정답 디자인'을 제시하지 말고 학생이 스스로 고치도록 돕는 톤으로 쓰세요.
 1) 제작 가능성  2) 입체 장식의 두께  3) 장식의 위치·구도  4) 색 조화  5) 컬렉션 통일감
 
 반드시 아래 JSON 스키마만 출력하세요. 마크다운 코드펜스, 설명문 없이 JSON 객체 하나만.
 { "overall": string, "rubric": [{"name": string, "level": "좋음"|"보통"|"보완필요", "comment": string}],
-  "strengths": string[], "improvements": string[], "checkQuestions": string[], "safetyNotes": string[] }
+  "strengths": string[], "improvements": string[], "checkQuestions": string[], "safetyNotes": string[],
+  "mathAdvice": { "summary": string, "principle": string, "example": string, "tip": string } }
 
 - comment는 각 1~2문장, 한국어 존댓말. 색·구도·레이아웃을 구체적으로.
-- improvements는 바로 적용할 수 있는 다음 행동 2~4개 (예: "약지 팁 끝 장식을 2mm 안쪽으로").
+- improvements는 바로 적용할 수 있는 다음 행동 2~4개.
 - checkQuestions는 정확히 3개, 모두 물음표로 끝나는 되묻는 질문.
-- 사진이 흐리거나 네일이 아닌 경우 overall에 그 사실을 적고 나머지는 빈 배열로 두세요.`;
+- mathAdvice는 필수: 사진에서 보이는 색·모티브·배치를 경우의 수(곱의 법칙·순열·조합·합의 법칙 중 적절한 것)로 짧게 연결하세요.
+  · summary: 이 작품에서 세어 볼 선택 요소가 무엇인지 1~2문장
+  · principle: 원리 이름 (예: "조합", "곱의 법칙", "순열")
+  · example: 간단한 식과 의미 (예: "베이스 5색 중 3색 고르기 → 5C3=10가지")
+  · tip: 후보를 어떻게 좁히면 좋은지 실습 조언 1문장
+- 사진이 흐리거나 네일이 아닌 경우 overall에 그 사실을 적고 나머지는 빈 배열, mathAdvice는 null.`;
 }
 
 export function buildImproveImagePrompt(opts: {

@@ -52,6 +52,27 @@ export function DesignFeedbackCard({ feedback }: { feedback: DesignFeedback }) {
         </div>
       )}
 
+      {feedback.mathAdvice && (
+        <div className="rounded-xl border border-[#B8C9E0] bg-[#F3F7FC] p-3">
+          <p className="text-sm font-bold text-[#1E4B8F]">경우의 수 조언</p>
+          <p className="mt-1.5 text-[14px] leading-relaxed text-[#333]">
+            {feedback.mathAdvice.summary}
+          </p>
+          <p className="mt-2 text-[13px] text-[#444]">
+            <span className="font-semibold">원리:</span>{" "}
+            {feedback.mathAdvice.principle}
+          </p>
+          <p className="mt-1 text-[13px] text-[#444]">
+            <span className="font-semibold">예시:</span>{" "}
+            {feedback.mathAdvice.example}
+          </p>
+          <p className="mt-1 text-[13px] text-[#444]">
+            <span className="font-semibold">실습 tip:</span>{" "}
+            {feedback.mathAdvice.tip}
+          </p>
+        </div>
+      )}
+
       <div className="rounded-xl border-2 border-[#C9A227]/30 bg-[#FFF9E8] p-3">
         <p className="text-sm font-bold text-[#7A5A00]">생각해 볼 질문</p>
         <ul className="mt-2 space-y-1.5 text-[14px] text-[#4A3A10]">

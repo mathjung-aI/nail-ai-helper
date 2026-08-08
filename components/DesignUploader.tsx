@@ -77,7 +77,8 @@ export function DesignUploader({
           </button>
         </div>
         <p className="mt-1 text-[14px] text-[#555]">
-          사진은 서버에 저장되지 않아요. 제작 가능성·두께·위치·색·통일감을 점검합니다.
+          사진은 서버에 저장되지 않아요. 디자인 피드백과 경우의 수 조언을 함께
+          드립니다.
         </p>
 
         <button

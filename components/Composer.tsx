@@ -51,7 +51,7 @@ export function Composer({
               submit();
             }
           }}
-          placeholder="전공·경우의 수 질문을 입력하세요"
+          placeholder="네일·경우의 수 질문이 있으면 입력 (선택)"
           disabled={disabled}
           className="min-h-12 flex-1 rounded-xl border border-[#DDD6CB] bg-[#FFFCFA] px-3 text-base outline-none focus:border-[#999]"
         />

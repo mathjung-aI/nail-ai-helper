@@ -4,8 +4,6 @@ import { Composer } from "@/components/Composer";
 import { DesignUploader } from "@/components/DesignUploader";
 import { ImageGenConfirmModal } from "@/components/ImageGenConfirmModal";
 import { MessageBubble, SourceSheet } from "@/components/MessageBubble";
-import { ModeTabs } from "@/components/ModeTabs";
-import { SuggestedQuestions } from "@/components/SuggestedQuestions";
 import { getGroup, GROUPS } from "@/lib/knowledge/artists";
 import { LESSON_CHUNKS } from "@/lib/knowledge/lesson";
 import { MATH_CHUNKS } from "@/lib/knowledge/math";
@@ -19,7 +17,6 @@ import {
 } from "@/lib/storage";
 import type {
   ChatMessage,
-  ChatMode,
   DesignFeedback,
   DesignSpecCard,
   KnowledgeChunk,
@@ -29,11 +26,6 @@ import { useEffect, useRef, useState } from "react";
 
 function uid() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function loadingFor(mode: ChatMode) {
-  if (mode === "math") return "조합 수를 계산하는 중…";
-  return "교재를 찾아보는 중…";
 }
 
 function defaultProfile(group = 1): Profile {
@@ -54,8 +46,6 @@ type PendingImprove = {
 
 export function ChatWindow({ mockBadge }: { mockBadge: boolean }) {
   const [profile, setProfile] = useState<Profile>(defaultProfile(1));
-  const [mode, setMode] = useState<ChatMode>("nail");
-  const [session, setSession] = useState<1 | 2 | 3>(2);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [busy, setBusy] = useState(false);
   const [loadLabel, setLoadLabel] = useState<string | null>(null);
@@ -103,7 +93,7 @@ export function ChatWindow({ mockBadge }: { mockBadge: boolean }) {
       id: uid(),
       role: "user",
       content: text,
-      mode,
+      mode: "assistant",
       createdAt: Date.now(),
     };
     const assistantId = uid();
@@ -114,12 +104,12 @@ export function ChatWindow({ mockBadge }: { mockBadge: boolean }) {
         id: assistantId,
         role: "assistant",
         content: "",
-        mode,
+        mode: "assistant",
         createdAt: Date.now(),
       },
     ]);
     setBusy(true);
-    setLoadLabel(loadingFor(mode));
+    setLoadLabel("답변을 준비하는 중…");
 
     try {
       const history = [...messages, userMsg]
@@ -130,7 +120,11 @@ export function ChatWindow({ mockBadge }: { mockBadge: boolean }) {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode, messages: history, profile }),
+        body: JSON.stringify({
+          mode: "assistant",
+          messages: history,
+          profile,
+        }),
       });
 
       if (!res.ok || !res.body) throw new Error("fail");
@@ -187,7 +181,7 @@ export function ChatWindow({ mockBadge }: { mockBadge: boolean }) {
         ts: Date.now(),
         group: profile.group,
         name: profile.name || "익명",
-        mode,
+        mode: "assistant",
         question: text,
         answerSummary: full.slice(0, 120),
       });
@@ -210,10 +204,10 @@ export function ChatWindow({ mockBadge }: { mockBadge: boolean }) {
         id: feedbackMsgId,
         role: "assistant",
         content:
-          "업로드한 작품을 루브릭으로 살펴봤어요. 정답은 없으니 보완점을 참고해 조에서 다듬어 보세요. 원하시면 부분 개선 예시 이미지도 만들 수 있어요.",
+          "업로드한 작품을 살펴봤어요. 텍스트 피드백과 경우의 수 조언을 확인한 뒤, 원하면 개선 예시 이미지도 만들 수 있어요.",
         feedback,
         createdAt: Date.now(),
-        mode: "nail",
+        mode: "assistant",
       },
     ]);
     setPendingImprove({
@@ -294,7 +288,7 @@ export function ChatWindow({ mockBadge }: { mockBadge: boolean }) {
         tipPlan:
           pending.feedback.improvements.slice(0, 2).join(" · ") ||
           "피드백 보완점을 반영한 예시",
-        countingBasis: "",
+        countingBasis: pending.feedback.mathAdvice?.example || "",
         makeSteps: pending.feedback.improvements.slice(0, 4),
         cautions: pending.feedback.safetyNotes || [],
         imageUrl: data.imageUrl as string,
@@ -306,7 +300,7 @@ export function ChatWindow({ mockBadge }: { mockBadge: boolean }) {
             ? {
                 ...m,
                 content:
-                  "텍스트 피드백과 함께, 작품을 부분적으로 다듬은 개선 예시 이미지예요. 참고용이며 그대로 따라 할 필요는 없어요.",
+                  "텍스트·경우의 수 피드백과 함께, 작품을 부분적으로 다듬은 개선 예시 이미지예요. 참고용이며 그대로 따라 할 필요는 없어요.",
                 designs: [card],
               }
             : m
@@ -385,8 +379,6 @@ export function ChatWindow({ mockBadge }: { mockBadge: boolean }) {
         </div>
       </header>
 
-      <ModeTabs mode={mode} onChange={setMode} accent={accent} />
-
       <main className="flex-1 overflow-y-auto px-3 py-3">
         {messages.length === 0 && (
           <div className="mx-auto max-w-2xl rounded-2xl border border-[#E8E0D4] bg-white/80 p-5">
@@ -396,32 +388,19 @@ export function ChatWindow({ mockBadge }: { mockBadge: boolean }) {
             <p className="mt-2 text-[16px] leading-relaxed text-[#333]">
               {g.intro}
             </p>
-            <p className="mt-3 text-[14px] text-[#666]">
-              실습 중 궁금한 점을 물어보거나, 작품을 올려 텍스트·이미지 피드백을
-              받아 보세요.
+            <p className="mt-4 text-[15px] leading-relaxed text-[#444]">
+              이 앱의 핵심은 <strong>작품 피드백</strong>입니다. 네일 디자인을
+              올리면 텍스트·경우의 수 조언을 받고, 원하면 개선 예시 이미지도
+              받을 수 있어요.
             </p>
-            <div className="mt-4 flex flex-wrap gap-2">
-              {[
-                "이 두께로 조형해도 경화가 잘 될까요?",
-                "베이스 컬러 5, 아트 기법 4, 입체 모티브 3이면 팁 디자인은 몇 가지예요?",
-                "미경화 젤은 어떻게 처리하나요?",
-                "디자인을 확정할 때 무엇을 기준으로 판단해야 하나요?",
-                "톱 젤은 언제 바르나요?",
-              ].map((q) => (
-                <button
-                  key={q}
-                  type="button"
-                  onClick={() => sendQuestion(q)}
-                  className="min-h-11 rounded-full border border-[#DDD6CB] bg-[#FFFCFA] px-3 text-left text-[13px]"
-                >
-                  {q}
-                </button>
-              ))}
-            </div>
+            <p className="mt-2 text-[13px] text-[#777]">
+              네일 실습이나 경우의 수 질문이 있으면 아래 입력창으로도 물어볼 수
+              있어요.
+            </p>
             <button
               type="button"
               onClick={() => setUploaderOpen(true)}
-              className="mt-4 min-h-11 w-full rounded-xl font-bold text-white"
+              className="mt-5 min-h-12 w-full rounded-xl text-[15px] font-bold text-white"
               style={{ background: accent }}
             >
               작품 피드백 받기
@@ -455,14 +434,6 @@ export function ChatWindow({ mockBadge }: { mockBadge: boolean }) {
         )}
         <div ref={bottomRef} />
       </main>
-
-      <SuggestedQuestions
-        session={session}
-        mode={mode}
-        onSelectSession={setSession}
-        onAsk={sendQuestion}
-        onUpload={() => setUploaderOpen(true)}
-      />
 
       <Composer
         accent={accent}

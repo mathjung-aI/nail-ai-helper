@@ -224,7 +224,18 @@ export function mockChatReply(
   };
 }
 
-export function mockDesignFeedback(artist: string): DesignFeedback {
+export function mockDesignFeedback(
+  artist: string,
+  group?: {
+    baseColors: string[];
+    techniques: string[];
+    motifs: string[];
+    countingExample: string;
+  }
+): DesignFeedback {
+  const colors = group?.baseColors?.length || 5;
+  const techniques = group?.techniques?.length || 4;
+  const motifs = group?.motifs?.length || 3;
   return {
     overall: `${artist} 분위기를 의식한 시도가 보여요. 정답은 없으니, 아래 기준으로 조에서 한 번 더 다듬어 보세요.`,
     rubric: [
@@ -272,6 +283,14 @@ export function mockDesignFeedback(artist: string): DesignFeedback {
       "젤 램프 광원을 직접 보지 마세요.",
       "미경화 젤은 젤 클렌저로 처리하세요.",
     ],
+    mathAdvice: {
+      summary: `조 팔레트(베이스 ${colors}·기법 ${techniques}·모티브 ${motifs})에서 지금 작품이 어떤 선택을 했는지 세어 보면, 후보를 더 줄일 수 있어요.`,
+      principle: "곱의 법칙",
+      example:
+        group?.countingExample ||
+        `베이스 ${colors} × 기법 ${techniques} × 모티브 ${motifs} = ${colors * techniques * motifs}가지`,
+      tip: "전체 경우의 수 중 통일감·제작 가능성이 높은 3안 정도로 압축해 조에서 확정해 보세요.",
+    },
   };
 }
 

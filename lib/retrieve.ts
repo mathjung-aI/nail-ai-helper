@@ -3,7 +3,7 @@ import { MATH_CHUNKS } from "@/lib/knowledge/math";
 import { LESSON_CHUNKS } from "@/lib/knowledge/lesson";
 import type { Domain, KnowledgeChunk } from "@/lib/types";
 
-const BY_DOMAIN: Record<Domain, KnowledgeChunk[]> = {
+const BY_DOMAIN: Record<"nail" | "math" | "lesson", KnowledgeChunk[]> = {
   nail: NAIL_CHUNKS,
   math: MATH_CHUNKS,
   lesson: LESSON_CHUNKS as KnowledgeChunk[],
@@ -38,6 +38,19 @@ export function retrieve(
   domain: Domain,
   k = 3
 ): KnowledgeChunk[] {
+  if (domain === "assistant") {
+    const nail = retrieve(query, "nail", Math.max(2, Math.ceil(k / 2)));
+    const math = retrieve(query, "math", Math.max(2, Math.floor(k / 2)));
+    const seen = new Set<string>();
+    const merged: KnowledgeChunk[] = [];
+    for (const c of [...nail, ...math]) {
+      if (seen.has(c.id)) continue;
+      seen.add(c.id);
+      merged.push(c);
+      if (merged.length >= k) break;
+    }
+    return merged;
+  }
   const pool = BY_DOMAIN[domain] ?? [];
   const scored = pool
     .map((chunk) => ({ chunk, score: scoreChunk(query, chunk) }))
