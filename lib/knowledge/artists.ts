@@ -3,6 +3,7 @@ import type { DesignSpecCard } from "@/lib/types";
 export type GroupInfo = {
   group: number;
   artist: string;
+  shortName: string;
   accentHex: string;
   mood: string;
   baseColors: string[];
@@ -16,6 +17,7 @@ export const GROUPS: GroupInfo[] = [
   {
     group: 1,
     artist: "빈센트 반 고흐",
+    shortName: "고흐",
     accentHex: "#1E4B8F",
     mood: "thick short gel brush dabs like student hand-painted tips, cobalt and mustard contrast, raised swirling emboss ridges, classroom gel craft — not a museum painting copy",
     baseColors: [
@@ -33,7 +35,47 @@ export const GROUPS: GroupInfo[] = [
   },
   {
     group: 2,
+    artist: "구스타프 클림트",
+    shortName: "클림트",
+    accentHex: "#C9A227",
+    mood: "ornate student gel craft: gold base, emerald stipple, pearl parts, red gem accents, gold chains and filigree charms, molded-gel tree or floral relief — decorative classroom tips, never reproduce a famous framed painting",
+    baseColors: ["골드", "블랙", "앰버", "버건디", "샴페인 베이지"],
+    techniques: ["골드 포일", "쪼물젤 조형", "진주파츠·스톤", "세필 라인"],
+    motifs: ["해바라기·꽃 엠보", "골드 소용돌이", "진주·체인 드롭"],
+    countingExample: "순열 10P3 = 720가지 (시그니처 팁 배치)",
+    intro:
+      "골드와 블랙의 대비, 기하 나선·모자이크가 핵심입니다. 시그니처 팁 위치를 경우의 수로 정한 뒤 나머지는 절제해 통일감을 잡으세요.",
+  },
+  {
+    group: 3,
+    artist: "파블로 피카소",
+    shortName: "피카소",
+    accentHex: "#C45C26",
+    mood: "student cubist-inspired gel craft: fragmented color planes, bold outline seams, warm ochre with cobalt and charcoal blocks, geometric face-like tip accents reinterpreted as wearable nail shapes — never copy a famous painting",
+    baseColors: ["오커 옐로우", "코발트 블루", "차콜 그레이", "크림 화이트", "테라코타"],
+    techniques: ["면 분할 컬러링", "세필 아웃라인", "플랫 엠보 블록", "매트·유광 대비"],
+    motifs: ["기하 면 분할", "단순화된 실루엣", "각도 있는 면"],
+    countingExample: "조합 8C3 = 56가지 (면 색 선택)",
+    intro:
+      "면을 나누고 선으로 연결하는 구성이 핵심입니다. 원색 블록을 너무 복잡하게 쓰지 말고, 팁마다 면 개수를 경우의 수로 정해 보세요.",
+  },
+  {
+    group: 4,
+    artist: "에드바르 뭉크",
+    shortName: "뭉크",
+    accentHex: "#B33A3A",
+    mood: "expressive student gel craft: swirling sky-like color bands, emotional warm orange against cool teal, loose painterly emboss strokes, tense curved lines — mood and color climate only, never reproduce a famous artwork",
+    baseColors: ["선셋 오렌지", "딥 테일", "와인 레드", "미드나잇 블루", "아이보리"],
+    techniques: ["긴 곡선 엠보", "감정 그러데이션", "러프 붓터치", "반투명 레이어"],
+    motifs: ["소용돌이 하늘 밴드", "물결 곡선", "실루엣 포인트"],
+    countingExample: "곱의 법칙 5×3×2 = 30가지 (색·곡선·포인트)",
+    intro:
+      "따뜻한 색과 차가운 색의 대비, 긴 곡선 리듬이 핵심입니다. 감정적인 분위기를 젤 질감으로 옮기되 두께는 얇게 유지하세요.",
+  },
+  {
+    group: 5,
     artist: "클로드 모네",
+    shortName: "모네",
     accentHex: "#6FA8B8",
     mood: "student impressionist gel painting on almond tips: short dabbed strokes of aqua, lavender, pink, soft pond-garden color layers, handmade brush texture — reinterpret mood only, never copy a famous canvas",
     baseColors: [
@@ -48,55 +90,6 @@ export const GROUPS: GroupInfo[] = [
     countingExample: "합의 법칙 — 따뜻한 팔레트 또는 차가운 팔레트 선택",
     intro:
       "옅은 파스텔과 흐릿한 경계가 특징입니다. 수련·물결 모티브를 얇은 블러 엠보로 표현하면 무대 조명에서도 부드럽게 빛납니다.",
-  },
-  {
-    group: 3,
-    artist: "구스타프 클림트",
-    accentHex: "#C9A227",
-    mood: "ornate student gel craft: gold base, emerald stipple, pearl parts, red gem accents, gold chains and filigree charms, molded-gel tree or floral relief — decorative classroom tips, never reproduce a famous framed painting",
-    baseColors: ["골드", "블랙", "앰버", "버건디", "샴페인 베이지"],
-    techniques: ["골드 포일", "쪼물젤 조형", "진주파츠·스톤", "세필 라인"],
-    motifs: ["해바라기·꽃 엠보", "골드 소용돌이", "진주·체인 드롭"],
-    countingExample: "순열 10P3 = 720가지 (시그니처 팁 배치)",
-    intro:
-      "골드와 블랙의 대비, 기하 나선·모자이크가 핵심입니다. 시그니처 팁 위치를 경우의 수로 정한 뒤 나머지는 절제해 통일감을 잡으세요.",
-  },
-  {
-    group: 4,
-    artist: "피에트 몬드리안",
-    accentHex: "#D93A2B",
-    mood: "clean primary red blue yellow blocks separated by bold black grid lines on white",
-    baseColors: [
-      "화이트",
-      "프라이머리 레드",
-      "프라이머리 블루",
-      "프라이머리 옐로우",
-      "블랙",
-    ],
-    techniques: ["블록 컬러링", "엠보 라인 그리드", "매트 톱 젤", "면 분할"],
-    motifs: ["사각 블록", "교차 라인", "코너 포인트"],
-    countingExample: "조합 8C5 = 56가지",
-    intro:
-      "원색 블록과 굵은 검정 그리드가 핵심입니다. 면 분할을 명확히 하고 두께를 얇게 유지하면 생활 착용성도 좋아집니다.",
-  },
-  {
-    group: 5,
-    artist: "쿠사마 야요이",
-    accentHex: "#E0447C",
-    // 생존 작가 — 이미지 프롬프트에 작가명·작품명을 넣지 말 것. mood 형용사만 사용.
-    mood: "repeating polka dot pattern in high-contrast primary colors, rhythmic scattered round dots",
-    baseColors: [
-      "비비드 레드",
-      "블랙",
-      "화이트",
-      "비비드 옐로우",
-      "핫 핑크",
-    ],
-    techniques: ["도트 반복", "크기 변주 도트", "엠보 볼 조형", "컬러 대비"],
-    motifs: ["원형 도트", "호박 실루엣", "반복 패턴 그리드"],
-    countingExample: "순열 6P4 = 360가지 (포인트 배열)",
-    intro:
-      "고대비 원색의 반복 도트 리듬이 핵심입니다. 크기·간격 변주로 10팁 통일감을 만들고, 포인트 배열은 순열로 점검해 보세요.",
   },
 ];
 
@@ -169,7 +162,7 @@ export const SAMPLE_DESIGNS: DesignSpecCard[] = [
   // ── 2조 모네 ──
   {
     id: "g2-a",
-    group: 2,
+    group: 5,
     name: "수련 파스텔 블러",
     concept: "연보라·핑크 워터 그러데이션 위에 얇은 수련 꽃잎 엠보",
     base: "연보라",
@@ -187,7 +180,7 @@ export const SAMPLE_DESIGNS: DesignSpecCard[] = [
   },
   {
     id: "g2-b",
-    group: 2,
+    group: 5,
     name: "물결 미스트",
     concept: "세이지→크림 블렌딩에 잔잔한 물결 라인",
     base: "세이지 그린",
@@ -200,7 +193,7 @@ export const SAMPLE_DESIGNS: DesignSpecCard[] = [
   },
   {
     id: "g2-c",
-    group: 2,
+    group: 5,
     name: "안개 도트",
     concept: "크림 화이트에 미스티 블루 도트로 분위기만 암시",
     base: "크림 화이트",
@@ -214,7 +207,7 @@ export const SAMPLE_DESIGNS: DesignSpecCard[] = [
   // ── 3조 클림트 ──
   {
     id: "g3-a",
-    group: 3,
+    group: 2,
     name: "골드 모자이크 미니멀",
     concept: "10팁 중 3팁만 골드 나선 포인트, 나머지는 블랙 무광으로 절제",
     base: "블랙",
@@ -235,7 +228,7 @@ export const SAMPLE_DESIGNS: DesignSpecCard[] = [
   },
   {
     id: "g3-b",
-    group: 3,
+    group: 2,
     name: "앰버 타일",
     concept: "샴페인 베이지에 사각 모자이크와 골드 라인",
     base: "샴페인 베이지",
@@ -254,7 +247,7 @@ export const SAMPLE_DESIGNS: DesignSpecCard[] = [
   },
   {
     id: "g3-c",
-    group: 3,
+    group: 2,
     name: "버건디 눈물방울",
     concept: "버건디 베이스에 눈물방울 스톤·엠보 포인트",
     base: "버건디",
@@ -274,7 +267,7 @@ export const SAMPLE_DESIGNS: DesignSpecCard[] = [
   // ── 4조 몬드리안 ──
   {
     id: "g4-a",
-    group: 4,
+    group: 3,
     name: "프라이머리 그리드",
     concept: "화이트 바탕에 원색 블록과 검정 엠보 그리드",
     base: "화이트",
@@ -293,7 +286,7 @@ export const SAMPLE_DESIGNS: DesignSpecCard[] = [
   },
   {
     id: "g4-b",
-    group: 4,
+    group: 3,
     name: "코너 포인트",
     concept: "면 분할 후 한쪽 코너에만 원색 포인트",
     base: "화이트",
@@ -306,7 +299,7 @@ export const SAMPLE_DESIGNS: DesignSpecCard[] = [
   },
   {
     id: "g4-c",
-    group: 4,
+    group: 3,
     name: "레드 액센트 미니멀",
     concept: "대부분 화이트·블랙, 2팁만 레드 블록 강조",
     base: "화이트",
@@ -320,7 +313,7 @@ export const SAMPLE_DESIGNS: DesignSpecCard[] = [
   // ── 5조 쿠사마(요소 형용사만) ──
   {
     id: "g5-a",
-    group: 5,
+    group: 4,
     name: "리듬 도트 대비",
     concept: "화이트·블랙 교차 베이스에 비비드 도트 크기 변주",
     base: "화이트",
@@ -339,7 +332,7 @@ export const SAMPLE_DESIGNS: DesignSpecCard[] = [
   },
   {
     id: "g5-b",
-    group: 5,
+    group: 4,
     name: "호박 실루엣 미니",
     concept: "비비드 옐로우에 작은 원형 실루엣과 도트 그리드",
     base: "비비드 옐로우",
@@ -352,7 +345,7 @@ export const SAMPLE_DESIGNS: DesignSpecCard[] = [
   },
   {
     id: "g5-c",
-    group: 5,
+    group: 4,
     name: "핫핑크 반복 그리드",
     concept: "블랙 바탕에 핫핑크·화이트 도트 그리드",
     base: "블랙",

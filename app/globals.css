@@ -1,11 +1,15 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f7f3ec;
+  --background: #faf8f5;
   --foreground: #1a1a1a;
+  --muted-foreground: #3d3a36;
   --surface: #fffcfa;
   --muted: #666666;
   --accent: #c9a227;
+  --blob-1: #1b3a8c;
+  --blob-2: #e8a317;
+  --blob-3: #2e5c8a;
 }
 
 @theme inline {
@@ -15,7 +19,7 @@
 }
 
 body {
-  background: var(--background);
+  background: transparent;
   color: var(--foreground);
   font-family: var(--font-noto), "Apple SD Gothic Neo", sans-serif;
   font-size: 16px;
@@ -38,4 +42,89 @@ button:disabled {
 ::-webkit-scrollbar-thumb {
   background: #d5cbc0;
   border-radius: 99px;
+}
+
+/* ── 화가 팔레트 블롭 (방식 B) ── */
+.artist-blob {
+  position: absolute;
+  width: min(90vw, 720px);
+  height: min(90vw, 720px);
+  border-radius: 9999px;
+  filter: blur(64px);
+  opacity: 0.55;
+  transition: background-color 400ms ease-in-out;
+  will-change: transform, background-color;
+}
+
+.artist-blob-1 {
+  background: var(--blob-1);
+  top: -10%;
+  left: -8%;
+  animation: artist-blob-drift-a 20s ease-in-out infinite alternate;
+}
+
+.artist-blob-2 {
+  background: var(--blob-2);
+  top: 18%;
+  right: -14%;
+  animation: artist-blob-drift-b 22s ease-in-out infinite alternate;
+}
+
+.artist-blob-3 {
+  background: var(--blob-3);
+  bottom: -12%;
+  left: 22%;
+  animation: artist-blob-drift-c 24s ease-in-out infinite alternate;
+}
+
+@keyframes artist-blob-drift-a {
+  from {
+    transform: translate(0, 0) scale(1);
+  }
+  to {
+    transform: translate(8%, 12%) scale(1.08);
+  }
+}
+
+@keyframes artist-blob-drift-b {
+  from {
+    transform: translate(0, 0) scale(1.05);
+  }
+  to {
+    transform: translate(-10%, 8%) scale(1);
+  }
+}
+
+@keyframes artist-blob-drift-c {
+  from {
+    transform: translate(0, 0) scale(1);
+  }
+  to {
+    transform: translate(6%, -10%) scale(1.1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .artist-blob-1,
+  .artist-blob-2,
+  .artist-blob-3 {
+    animation: none;
+  }
+}
+
+/* CSS 변수 직접 transition은 브라우저 지원이 불안정해 배경색은 JS/인라인으로도 갱신 */
+@property --blob-1 {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #1b3a8c;
+}
+@property --blob-2 {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #e8a317;
+}
+@property --blob-3 {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #2e5c8a;
 }

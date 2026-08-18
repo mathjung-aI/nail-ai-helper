@@ -1,9 +1,13 @@
 "use client";
 
+import { ArtistBackground } from "@/components/ArtistBackground";
 import { Composer } from "@/components/Composer";
 import { DesignUploader } from "@/components/DesignUploader";
-import { ImageGenConfirmModal } from "@/components/ImageGenConfirmModal";
 import { MessageBubble, SourceSheet } from "@/components/MessageBubble";
+import {
+  BACKGROUND_MUTED,
+  BACKGROUND_TEXT,
+} from "@/lib/artist-background";
 import { getGroup, GROUPS } from "@/lib/knowledge/artists";
 import { LESSON_CHUNKS } from "@/lib/knowledge/lesson";
 import { MATH_CHUNKS } from "@/lib/knowledge/math";
@@ -38,12 +42,6 @@ function defaultProfile(group = 1): Profile {
   };
 }
 
-type PendingImprove = {
-  feedbackMsgId: string;
-  feedback: DesignFeedback;
-  studentImage: File;
-};
-
 export function ChatWindow({ mockBadge }: { mockBadge: boolean }) {
   const [profile, setProfile] = useState<Profile>(defaultProfile(1));
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -51,9 +49,6 @@ export function ChatWindow({ mockBadge }: { mockBadge: boolean }) {
   const [loadLabel, setLoadLabel] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [uploaderOpen, setUploaderOpen] = useState(false);
-  const [pendingImprove, setPendingImprove] = useState<PendingImprove | null>(
-    null
-  );
   const [sourceOpen, setSourceOpen] = useState<{
     label: string;
     chunk?: KnowledgeChunk | null;
@@ -83,7 +78,6 @@ export function ChatWindow({ mockBadge }: { mockBadge: boolean }) {
     setProfile(p);
     setMessages([]);
     setError(null);
-    setPendingImprove(null);
   }
 
   async function sendQuestion(text: string) {
@@ -196,7 +190,7 @@ export function ChatWindow({ mockBadge }: { mockBadge: boolean }) {
     }
   }
 
-  function onFeedback(feedback: DesignFeedback, studentImage: File) {
+  async function onFeedback(feedback: DesignFeedback, studentImage: File) {
     const feedbackMsgId = uid();
     setMessages((prev) => [
       ...prev,
@@ -204,27 +198,25 @@ export function ChatWindow({ mockBadge }: { mockBadge: boolean }) {
         id: feedbackMsgId,
         role: "assistant",
         content:
-          "업로드한 작품을 살펴봤어요. 텍스트 피드백과 경우의 수 조언을 확인한 뒤, 원하면 개선 예시 이미지도 만들 수 있어요.",
+          "작품을 평가하고, 발전적인 피드백과 경우의 수 조언을 정리했어요. 이어서 수정 예시 이미지를 만들고 있어요.",
         feedback,
         createdAt: Date.now(),
         mode: "assistant",
       },
     ]);
-    setPendingImprove({
-      feedbackMsgId,
-      feedback,
-      studentImage,
-    });
+
+    // 확인 없이 바로 수정 이미지 생성
+    await generateImproveImage(feedbackMsgId, feedback, studentImage);
   }
 
-  async function generateImproveImage() {
-    if (!pendingImprove || busy) return;
-    const pending = pendingImprove;
-    setPendingImprove(null);
-
+  async function generateImproveImage(
+    feedbackMsgId: string,
+    feedback: DesignFeedback,
+    studentImage: File
+  ) {
     if (mockBadge) {
       setError(
-        "지금 MOCK 모드라 개선 이미지를 만들 수 없어요. MOCK_MODE=false 와 API 키를 확인해 주세요."
+        "지금 MOCK 모드라 수정 이미지를 만들 수 없어요. MOCK_MODE=false 와 API 키를 확인해 주세요."
       );
       return;
     }
@@ -237,28 +229,25 @@ export function ChatWindow({ mockBadge }: { mockBadge: boolean }) {
 
     setBusy(true);
     setError(null);
-    setLoadLabel("학생 작품 기반 개선 예시 이미지를 만드는 중… (최대 1~2분)");
+    setLoadLabel("수정 예시 이미지를 만드는 중… (최대 1~2분)");
 
     try {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 180_000);
 
       const fd = new FormData();
-      fd.append("image", pending.studentImage);
+      fd.append("image", studentImage);
       fd.append("mode", "improve");
       fd.append("withImage", "true");
       fd.append("confirmed", "true");
       fd.append("group", String(profile.group));
       fd.append("artist", profile.artist || "");
-      fd.append("overall", pending.feedback.overall || "");
+      fd.append("overall", feedback.overall || "");
       fd.append(
         "improvements",
-        JSON.stringify(pending.feedback.improvements || [])
+        JSON.stringify(feedback.improvements || [])
       );
-      fd.append(
-        "strengths",
-        JSON.stringify(pending.feedback.strengths || [])
-      );
+      fd.append("strengths", JSON.stringify(feedback.strengths || []));
 
       const res = await fetch("/api/design-generate", {
         method: "POST",
@@ -271,36 +260,45 @@ export function ChatWindow({ mockBadge }: { mockBadge: boolean }) {
       if (!data?.ok || !data.imageUrl) {
         throw new Error(
           data?.error ||
-            "개선 예시 이미지를 만들지 못했어요. 잠시 후 다시 시도해 주세요."
+            "수정 예시 이미지를 만들지 못했어요. 잠시 후 다시 시도해 주세요."
         );
       }
 
       bumpImageGenCount(1);
 
+      const editExplanation =
+        (feedback.improvements || []).length > 0
+          ? feedback.improvements
+              .map((item, i) => `${i + 1}) ${item}`)
+              .join("\n")
+          : "색 균형·장식 위치·통일감을 조금씩 다듬은 예시입니다.";
+
       const card: DesignSpecCard = {
         id: `improve-${uid()}`,
         group: profile.group,
-        name: "부분 개선 예시",
-        concept: "업로드한 작품을 바탕으로 한 부분 개선 예시입니다.",
+        name: "수정 예시 이미지",
+        concept:
+          "업로드한 작품을 바탕으로, 피드백 보완점을 반영해 부분 수정한 예시입니다.",
         base: getGroup(profile.group).baseColors[0],
         technique: getGroup(profile.group).techniques[0],
         motif: getGroup(profile.group).motifs[0],
         tipPlan:
-          pending.feedback.improvements.slice(0, 2).join(" · ") ||
+          feedback.improvements.slice(0, 2).join(" · ") ||
           "피드백 보완점을 반영한 예시",
-        countingBasis: pending.feedback.mathAdvice?.example || "",
-        makeSteps: pending.feedback.improvements.slice(0, 4),
-        cautions: pending.feedback.safetyNotes || [],
+        countingBasis: feedback.mathAdvice?.example || "",
+        makeSteps: feedback.improvements.slice(0, 4),
+        cautions: feedback.safetyNotes || [],
         imageUrl: data.imageUrl as string,
+        editExplanation,
       };
 
       setMessages((prev) =>
         prev.map((m) =>
-          m.id === pending.feedbackMsgId
+          m.id === feedbackMsgId
             ? {
                 ...m,
                 content:
-                  "텍스트·경우의 수 피드백과 함께, 작품을 부분적으로 다듬은 개선 예시 이미지예요. 참고용이며 그대로 따라 할 필요는 없어요.",
+                  "1) 작품 평가  2) 발전 피드백·경우의 수 조언  3) 수정 예시 이미지와 수정 설명까지 준비했어요. 참고용이며 그대로 따라 할 필요는 없어요.",
                 designs: [card],
               }
             : m
@@ -313,7 +311,7 @@ export function ChatWindow({ mockBadge }: { mockBadge: boolean }) {
         ? "이미지 생성 시간이 너무 길어요. 네트워크가 안정적일 때 다시 시도해 주세요."
         : err instanceof Error && err.message
           ? err.message
-          : "개선 예시 이미지를 만들지 못했어요. 잠시 후 다시 시도해 주세요.";
+          : "수정 예시 이미지를 만들지 못했어요. 잠시 후 다시 시도해 주세요.";
       setError(msg);
     } finally {
       setBusy(false);
@@ -340,8 +338,13 @@ export function ChatWindow({ mockBadge }: { mockBadge: boolean }) {
   const g = getGroup(profile.group);
 
   return (
-    <div className="flex h-[100dvh] flex-col bg-[#F7F3EC]">
-      <header className="bg-[#2A2A2A] px-3 py-3 text-white">
+    <div
+      className="relative isolate flex h-[100dvh] flex-col"
+      style={{ color: BACKGROUND_TEXT }}
+    >
+      <ArtistBackground group={profile.group} />
+
+      <header className="relative z-10 bg-[#2A2A2A]/95 px-3 py-3 text-white backdrop-blur-[8px]">
         <div className="flex items-center justify-between gap-2">
           <h1 className="text-base font-bold sm:text-lg">
             🎨 네일아트 AI 학습 도우미
@@ -372,28 +375,37 @@ export function ChatWindow({ mockBadge }: { mockBadge: boolean }) {
                 }
                 aria-pressed={active}
               >
-                {item.group}조 - {item.artist}
+                {item.group}조 - {item.shortName}
               </button>
             );
           })}
         </div>
       </header>
 
-      <main className="flex-1 overflow-y-auto px-3 py-3">
+      <main className="relative z-10 flex-1 overflow-y-auto px-3 py-3">
         {messages.length === 0 && (
-          <div className="mx-auto max-w-2xl rounded-2xl border border-[#E8E0D4] bg-white/80 p-5">
+          <div className="mx-auto max-w-2xl rounded-2xl border border-[#E8E0D4] bg-white/85 p-5 shadow-sm backdrop-blur-[8px]">
             <p className="text-sm font-semibold" style={{ color: accent }}>
               {g.group}조 · {g.artist}
             </p>
-            <p className="mt-2 text-[16px] leading-relaxed text-[#333]">
+            <p
+              className="mt-2 text-[16px] leading-relaxed"
+              style={{ color: BACKGROUND_TEXT }}
+            >
               {g.intro}
             </p>
-            <p className="mt-4 text-[15px] leading-relaxed text-[#444]">
-              이 앱의 핵심은 <strong>작품 피드백</strong>입니다. 네일 디자인을
-              올리면 텍스트·경우의 수 조언을 받고, 원하면 개선 예시 이미지도
-              받을 수 있어요.
+            <p
+              className="mt-4 text-[15px] leading-relaxed"
+              style={{ color: BACKGROUND_MUTED }}
+            >
+              조를 고른 뒤 작품을 올리면 <strong>평가</strong>,{" "}
+              <strong>발전 피드백</strong>, <strong>수정 이미지</strong>,{" "}
+              <strong>수정 설명</strong>을 바로 받을 수 있어요.
             </p>
-            <p className="mt-2 text-[13px] text-[#777]">
+            <p
+              className="mt-2 text-[13px]"
+              style={{ color: BACKGROUND_MUTED }}
+            >
               네일 실습이나 경우의 수 질문이 있으면 아래 입력창으로도 물어볼 수
               있어요.
             </p>
@@ -443,7 +455,7 @@ export function ChatWindow({ mockBadge }: { mockBadge: boolean }) {
         onUpload={() => setUploaderOpen(true)}
       />
 
-      <footer className="bg-[#EFEAE3] px-3 py-1.5 text-center text-[10px] text-[#777]">
+      <footer className="relative z-10 bg-[#EFEAE3]/90 px-3 py-1.5 text-center text-[10px] backdrop-blur-[8px]" style={{ color: BACKGROUND_MUTED }}>
         교육부(2025) NCS 「입체 네일아트」 · 공통수학1 경우의 수 · 지도교사 박기연
       </footer>
 
@@ -455,12 +467,6 @@ export function ChatWindow({ mockBadge }: { mockBadge: boolean }) {
         onResult={onFeedback}
       />
 
-      <ImageGenConfirmModal
-        open={!!pendingImprove && !busy}
-        accent={accent}
-        onConfirm={() => void generateImproveImage()}
-        onTextOnly={() => setPendingImprove(null)}
-      />
 
       <SourceSheet
         open={!!sourceOpen}

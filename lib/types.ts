@@ -106,6 +106,8 @@ export type DesignSpecCard = {
   makeSteps: string[];
   cautions: string[];
   imageUrl?: string;
+  /** 수정 이미지에 적용한 변경 설명 */
+  editExplanation?: string;
 };
 
 export type HistoryEntry = {

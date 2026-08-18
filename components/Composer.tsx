@@ -26,7 +26,7 @@ export function Composer({
   }
 
   return (
-    <div className="border-t border-[#EBE6DE] bg-white px-3 py-2 safe-pb">
+    <div className="relative z-10 border-t border-[#EBE6DE] bg-white/90 px-3 py-2 backdrop-blur-[8px] safe-pb">
       {loadingLabel && (
         <p className="mb-1.5 text-[13px] font-medium text-[#666] animate-pulse">
           {loadingLabel}

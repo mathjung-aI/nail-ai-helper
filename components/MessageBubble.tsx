@@ -31,7 +31,9 @@ export function MessageBubble({
     <div className={`flex ${isUser ? "justify-end" : "justify-start"} mb-3`}>
       <div
         className={`max-w-[92%] sm:max-w-[80%] rounded-2xl px-4 py-3 text-[16px] leading-relaxed ${
-          isUser ? "text-white" : "bg-white text-[#1A1A1A] shadow-sm border border-[#EBE6DE]"
+          isUser
+            ? "text-white"
+            : "border border-[#EBE6DE] bg-white/85 text-[#1A1A1A] shadow-sm backdrop-blur-[8px]"
         }`}
         style={isUser ? { background: accent } : undefined}
       >
